@@ -8,6 +8,8 @@ This software package is a Monte Carlo (MC) based simulation package that is int
 
 ## Requirements
 
+* [Python 3](http://www.python.org)
+
 ## Download
 
 ## Installation
