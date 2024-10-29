@@ -24,6 +24,8 @@ Jorgensen, W.L.; Tirado–Rives, J. "Molecular modeling of organic and biomolecu
 
 **Contributing Authors**: Xiang Zhong and [Orlando Acevedo*](https://web.as.miami.edu/chemistrylabs/acevedogroup/research.html)
 
+**Special Thanks**: A special thanks to Bill Jorgensen for providing the source code and permission to adapt [BOSS](https://zarbi.chem.yale.edu/software.html).
+
 **Software License**:
 pyBOSS.
 Copyright (c) 2024 Orlando Acevedo
