@@ -1,0 +1,505 @@
+#!/bin/csh
+
+# version 0.10: starting
+# version 0.20: check `UpdateGaussian' at the very beginning
+# version 0.30: take care of when Gaussian crashes
+# version 0.40: dump out error info
+# version 0.50: properly backup files & fall back searching when Gaussian crashes
+# version 0.51: add more booleans to handle different errors
+# version 0.60: add fallback parameter aenet_atom_types
+#
+# version 1.00: more powerful to handle combinations of ICALC, NEWRUN and IPRNT
+# version 1.01: codes refinement
+# version 1.10: deal with when AENET prediction occurs error
+# version 1.20: add SchnetPack
+#
+# version 1.30: BC, fully refinement, for future update, please search UPDATENEEDED
+#
+# version 1.40: BC, compatible with pytorch server
+# version 1.41: check server return value, make sure it works well
+# version 1.42: fix errors when UpdateGaussian = n
+# version 1.43: avoid the generation of intermediate binary database file
+# version 1.44: use environment variable PORT
+# version 1.45: fix energy extraction issue for different QM methods
+# version 1.50: take care of when files QM.charges and qm.log not exist
+# version 1.60: integrate AENET to server
+# version 1.70: fix bug on QM energy extraction
+# version 1.71: continue, fix bug for special characters
+
+# Rule:
+# 1) for every variable, put noun/keyword at beginning
+# 2) do not use quotes, unless there are blanks or special chars
+# 3) separation/format with one blank space
+
+
+# BOSS/Gaussian Interface Linker Script
+# Set up to function with Gaussian < any version >
+# Enter Gaussian Input Specifics below:
+# ---------------------------------------------------
+
+# Name of Checkpoint file:
+set checkpt = qmmm
+
+# Number of Processors to be used per calculation:
+set procnum = 1
+
+# Amount of memory requested:
+set GMemory = '4000MB'
+
+# Electronic Structure Method:
+set ElStrMd = 'M062X'
+
+# Basis Set:
+set BasisSt = '6-31G(d)'
+
+# Population Analysis or Charge Model:
+set PopAnly = 'CM5'
+
+# Force SCF=InCore & Transformation=InCore? (Y/y or N/n):
+set InCore  = 'Y'
+
+# Title for Calculation:
+set GTitle  = 'QM/MM for BOSS'
+
+# Charge of Molecule/System:
+set GCharge = 0
+
+# Multipliicity:
+set GMultpl = 1
+
+# Number of steps (Frequency) to update QM-region atomic charges
+#
+# Multiple choices are given below.
+#
+# If it is a letter;
+#   Y/y, Only and always using Gaussian update the charges and energies
+#   N/n, Only using AENET update charges and energies after initialization
+#
+# If it is a number;
+#   multiplication between this number and the solute move frequency (PMFPAR)
+#   will be used as the final charge update frequency.
+#   number should be less than the total configurations.
+#   Otherwise, the charge updation will be turned off and only computed once,
+#   the same effect like `N/n'
+#
+#   If this number is set to number `1', the same effect as `Y/y'.
+#
+#   For example:
+#       if the move frequency is the number `a', and the user-provided number
+#       in here is set to be `b', then the final charge update frequency in
+#       MC/FEP calculation will be `a*b', which means charges will be updated
+#       in every `a*b' steps.
+#       This type of update is called Node Gaussian calculation
+#
+# If it is anything else;
+#   It will result in error at the very beginning in toplevel pmfcmd script
+set UpdateGaussian = 3
+
+
+# Note: variable to choose program to make prediction
+#
+# currently, only two programs can be used, case sensitive
+#
+# 1) aenet  :  variable < aenet_predict > will be used
+# 2) spk    :  variable < spk_predict >   will be used
+set program_predict_to_choose = aenet
+
+
+# Note:
+#   backup will always be turned on,
+#   all those backup files will have the name starting with "Backup-*"
+
+# hidden parameter, command for Gaussian program
+set g09 = g09
+
+# besides, environment variable `PORT' will also be used.
+
+
+# End of User Edits
+###############################################################################
+
+if ( $program_predict_to_choose != 'aenet' && $program_predict_to_choose != 'spk' ) then
+    echo "Error: not supported: $program_predict_to_choose, <UPDATENEEDED>"
+    exit 1
+endif
+
+
+# Here get the qm-count value
+set tmp = `sed -n 5p HEAD`
+set qmcnt = ${tmp[2]}
+
+
+# Get the current step frequency
+set tmp = `sed -n 6p HEAD`
+set fcnt = ${tmp[2]}
+
+
+# only for G09 initialization
+set bool_init = 'y'
+
+set tmp = `grep "MONTE ON" HEAD`
+# Note: double quoted parameter tmp is important
+if ( "$tmp" != '' ) set bool_init = 'n'
+
+# deal with case sensitive
+if ( $UpdateGaussian == 'n' || $UpdateGaussian == 'N' ) then
+    set UpdateGaussian = 'n'
+    if ( $qmcnt > 3 ) set bool_init = 'n'
+else if ( $UpdateGaussian == 'y' || $UpdateGaussian == 'Y' || $UpdateGaussian == 1 ) then
+    set UpdateGaussian = 'y'
+endif
+
+
+# take care of initialization
+if ( $bool_init == 'y' ) then
+    set tmp = `sed -n 7p HEAD`
+    set init = ${tmp[2]}
+    @ init_up = $init + 1
+    sed -i "7s/.*/INIT $init_up/" HEAD
+endif
+
+
+set bool_whether_gauss = 'n'
+if ( $UpdateGaussian == 'y' || $bool_init == 'y' ) then
+    set bool_whether_gauss = 'y'
+endif
+
+
+# whether it is an update call
+set bool_good_update = 'n'
+set tmp = `grep "UPDATE YES" HEAD`
+if ( "$tmp" != '' ) then
+    set bool_whether_gauss = 'y'
+    set bool_good_update = 'y'
+    sed -i "s/UPDATE YES/UPDATE DONE/" HEAD
+endif
+
+
+if ( $bool_good_update != 'y' && $bool_init == 'n' && $UpdateGaussian != 'n' && $UpdateGaussian != 'y' ) then
+    # calc current fcnt
+    @ fcnt_low = $UpdateGaussian * ( $fcnt - 1 ) * 3
+    @ fcnt_high = $fcnt_low + 3
+
+    # node call
+    if ( $qmcnt > $fcnt_low && $qmcnt <= $fcnt_high ) then
+        set bool_whether_gauss = 'y'
+        # if it is the last time call, update the HEAD file -- FREQUENCY
+        if ( $qmcnt == $fcnt_high ) then
+            @ fcnt_up = $fcnt + 1
+            sed -i "6s/.*/FREQUENCY $fcnt_up/" HEAD
+        endif
+    else
+        @ fcnt = $fcnt - 1
+    endif
+
+    # update qmcnt
+    @ qmcnt_up = $qmcnt + 1
+    sed -i "5s/.*/QM_COUNT $qmcnt_up/" HEAD
+else if ( $UpdateGaussian == 'n' && $bool_init == 'n' ) then
+    # the redundant codes
+    if ( $qmcnt <= 3 ) then
+        @ qmcnt_up = $qmcnt + 1
+        sed -i "5s/.*/QM_COUNT $qmcnt_up/" HEAD
+    endif
+endif
+
+
+# add more booleans, be careful of their initial values
+# we assume everything is good at first
+#
+# CSHELL has the restriction on the length of variable name!!
+# The maxmimum length is 30 chars!
+set bool_gauss_goodcalc = 'y'
+set bool_other_goodcalc = 'y'
+
+
+# Gaussian calculation
+if ( $bool_whether_gauss == 'y' ) then
+    if ( -f qm.txt ) then
+        cat << EOF  > qm.com
+%chk=${checkpt}
+%NProcShared=${procnum}
+%Mem=${GMemory}
+# ${ElStrMd}/${BasisSt} pop=${PopAnly}
+
+${GTitle}
+
+${GCharge} ${GMultpl}
+EOF
+        if ( $InCore == 'Y' || $InCore == 'y') then
+            sed -i '5 i\# SCF=InCore Transformation=InCore' qm.com
+        endif
+
+        cat qm.txt >> qm.com
+        echo "" >> qm.com
+        echo "" >> qm.com
+
+        rm -f qm.log
+        # execute Gaussian
+        $g09 < qm.com >& qm.log
+    else
+        set bool_gauss_goodcalc = 'n'
+        echo "Error: BOSS Issue: file qm.txt not exist: qmcnt=$qmcnt; fcnt=$fcnt"
+        echo "Error: BOSS Issue: file qm.txt not exist: qmcnt=$qmcnt; fcnt=$fcnt" >> HEAD
+    endif
+    # Now change GTYPE label
+    if ( $UpdateGaussian != 'y' ) sed -i "2s/.*/GTYPE TRUE /" HEAD
+else
+    sed -i "2s/.*/GTYPE FALSE/" HEAD
+endif
+
+
+# Important! Force to remove old QM.charges file
+rm -f QM.charges
+
+
+# UPDATENEEDED
+#
+# codes in here are only responsible to generate file < QM.charges >
+# please make sure file is generated only when everything is correct,
+# otherwise, set bool_gauss_goodcalc to `n'
+if ( $bool_whether_gauss == 'y' ) then
+    set s_popanly = `echo $PopAnly | tr "[:upper:]" "[:lower:]"`
+    if ( "$s_popanly" == 'cm5' ) then
+        set bool_good = 'y'
+        if ( $bool_gauss_goodcalc == 'y' && -f qm.log ) then
+            set size = `cat qm.txt | wc -l`
+            @ size = $size + 1
+            set AJ = `grep -A $size 'Hirshfeld charges, spin densities' qm.log`
+            @ j = 25
+            set AJsize = `echo $AJ | tr ' ' '\n' | wc -l`
+            @ tmp = $size * 8
+            if ( $AJsize >= $tmp ) then
+                while ( $j <= $AJsize )
+                    echo ${AJ[$j]} >> QM.charges
+                    @ j = $j + 8
+                end
+            else
+                set bool_good = 'n'
+            endif
+        else
+            set bool_good = 'n'
+        endif
+        if ( $bool_good == 'n' ) then
+            set bool_gauss_goodcalc = 'n'
+            set info_gauss_calc_failed = "Error: Gaussian calculation failed: qmcnt=$qmcnt; fcnt=$fcnt"
+            echo "$info_gauss_calc_failed"
+            echo "$info_gauss_calc_failed" >> HEAD
+        endif
+    else
+        set bool_gauss_goodcalc = 'n'
+        set info_gauss_calc_failed = "Error: UPDATENEEDED, PopAnly was not correctly interpreted"
+        echo "$info_gauss_calc_failed"
+        echo "$info_gauss_calc_failed" >> HEAD
+    endif
+endif
+
+
+# determine whether it is node call or update call
+if ( $bool_whether_gauss == 'y' && $bool_init != 'y' && $UpdateGaussian != 'y' ) then
+    if ( $bool_gauss_goodcalc == 'y' ) then
+        if ( $bool_good_update == 'y' ) then
+            # update call
+            @ qmold = $qmcnt - 1
+            @ fold = $fcnt - 1
+            set mod = `expr $qmold % 3`
+            if ( $mod == 0 ) set mod = 3
+            sed -i "s/QM_Q $fold $mod/#QM#Q $fold $mod/" HEAD
+
+            echo "QM_Q $fold $mod" >> HEAD
+            cat QM.charges >> HEAD
+            echo "QM_Q $fold $mod" >> HEAD
+            echo '' >> HEAD
+        else
+            # node call
+            set mod = `expr $qmcnt % 3`
+            if ( $mod == 0 ) set mod = 3
+
+            echo "QM_Q $fcnt $mod" >> HEAD
+            cat QM.charges >> HEAD
+            echo "QM_Q $fcnt $mod" >> HEAD
+            echo '' >> HEAD
+        endif
+    else
+        if ( $bool_good_update == 'y' ) then
+            # update call
+            @ qmold = $qmcnt - 1
+            @ fold = $fcnt - 1
+            set mod = `expr $qmold % 3`
+            if ( $mod == 0 ) set mod = 3
+            set info_gauss_calc_failed = "Error: Failed on Update calc, qmcnt=$qmold, fcnt=$fold, times=$mod"
+        else
+            # node call
+            set mod = `expr $qmcnt % 3`
+            if ( $mod == 0 ) set mod = 3
+            set info_gauss_calc_failed = "Error: Failed on Node calc, qmcnt=$qmcnt, fcnt=$fcnt, times=$mod"
+        endif
+        # reset, more detail
+        echo "$info_gauss_calc_failed"
+        echo "$info_gauss_calc_failed" >> HEAD
+    endif
+endif
+
+
+if ( $bool_init == 'y' ) then
+    set tmp = `expr $init % 3`
+    if ( $tmp == 0 ) set tmp = 3
+
+    if ( $bool_gauss_goodcalc == 'y' ) then
+        sed -i "s/QM_Q INIT $tmp/#QM#Q INIT $tmp/" HEAD
+
+        echo "QM_Q INIT $tmp" >> HEAD
+        cat QM.charges >> HEAD
+        echo "QM_Q INIT $tmp" >> HEAD
+        echo "" >> HEAD
+    else
+        set info_gauss_calc_failed = "Error: Failed on Initialization calc, times=$tmp"
+        echo "$info_gauss_calc_failed"
+        echo "$info_gauss_calc_failed" >> HEAD
+    endif
+endif
+
+
+if ( $bool_whether_gauss != 'y' ) then
+    # this can be an other call   OR   UpdateGaussian == n call
+    if ( $UpdateGaussian != 'n' ) then
+        set mod = `expr $qmcnt % 3`
+        if ( $mod == 0 ) set mod = 3
+        set tmp = `grep "QM_Q $fcnt $mod" HEAD`
+        if ( "$tmp" != '' ) then
+            sed -n "/QM_Q $fcnt $mod/,/QM_Q $fcnt $mod/{ /QM_Q $fcnt $mod/d; p; }" HEAD > QM.charges
+        else
+            # now, fall back searching
+            @ fold = $fcnt - 1
+            while ( $fold >= 1 )
+                set tmp = `grep "QM_Q $fold $mod" HEAD`
+                if ( "$tmp" != '' ) then
+                    sed -n "/QM_Q $fold $mod/,/QM_Q $fold $mod/{ /QM_Q $fold $mod/d; p; }" HEAD > QM.charges
+                    break
+                endif
+                @ fold = $fold - 1
+            end
+            if ( $fold < 1 ) set fold='None'
+            set bool_other_goodcalc = 'n'
+            set info_other_calc_failed = "Warning: OTHER fallback, times=$mod; fcnt=$fcnt => fcnt=$fold"
+            echo "$info_other_calc_failed"
+            echo "$info_other_calc_failed" >> HEAD
+        endif
+    else
+        # we cannot handle initialization, cause it is already at the very beginning
+        set mod = `expr $qmcnt % 3`
+        if ( $mod == 0 ) set mod = 3
+        set tmp = `grep "QM_Q INIT $mod" HEAD`
+        if ( "$tmp" == '' ) then
+            set bool_other_goodcalc = 'n'
+            set info_other_calc_failed = "Warning: INIT fallback, failed at times=$mod"
+            echo "$info_other_calc_failed"
+            echo "$info_other_calc_failed" >> HEAD
+        else
+            sed -n "/QM_Q INIT $mod/,/QM_Q INIT $mod/{ /QM_Q INIT $mod/d; p; }" HEAD > QM.charges
+        endif
+    endif
+endif
+
+
+# UPDATENEEDED
+#
+# following scripts are responsible to generate < ELEC.energy > file
+# and at the same time, set new energy value to EKCAL
+#
+# if errors happen, set EKCAL to FAILED
+set EKCAL = 'FAILED'
+if ( $bool_whether_gauss == 'y' ) then
+    # Old codes
+    # grep out the converged energies:
+    #set line = `grep 'SCF Done:' qm.log`
+    #set vnm = 0
+    #if ( "$line" != '' ) set vnm = `echo $line | tr ' ' '\n' | wc -l`
+    #if ( $vnm >= 5 ) then
+    #    set EHARTREE = ${line[5]}
+    #    set EKCAL = `echo "$EHARTREE * 627.509469" | bc -l`
+    #    if ( "$EKCAL" == '' || "$EKCAL" == 0 ) then
+    #        set bool_good_gauss_energy = 'n'
+    #    endif
+    #endif
+
+    # UPDATENEEDED
+    # care: Error may happen at every step
+    if ( $bool_gauss_goodcalc == 'y' && -f qm.log ) then
+        # extract energy in last summary block in between "1\1\GINC ... \\@"
+        set info = `sed -n '/1\\1\\GINC/,/\\\\\@/p' qm.log`
+        # remove blank space, cannot be in pipe, space may be the `newline` or `\0`
+        if ( "$info" != '') then
+            set info = `printf '%s' "$info" | sed 's/ //g'`
+            # Warning: only the general consideration, value right before RMSD is extracted
+            if ( "$info" != '' ) then
+                set info = `echo "$info" | sed -e 's/.*=\(.*\)\\RMSD.*/\1/'`
+                if ( "$info" != '' ) then
+                    set EKCAL = `echo "$info * 627.509469" | bc -l`
+                endif
+            endif
+        endif
+    endif
+    if ( "$EKCAL" == '' || "$EKCAL" == 0 ) set EKCAL = 'FAILED'
+    if ( "$EKCAL" != 'FAILED' ) then
+        echo "$EKCAL" > ELEC.energy
+    endif
+else
+    # <UPDATENEEDED> if port is changed
+    set tmp = `echo $program_predict_to_choose | nc localhost $PORT`
+    if ( $tmp == 'done' ) then
+        set EKCAL = `cat ELEC.energy`
+    else
+        set EKCAL = 'FAILED'
+    endif
+endif
+
+
+# we know if any errors happen, EKCAL will be set to FAILED
+# due to BOSS cannot handle variable types, so file ELEC.enrgy should
+# always be a file contains only one float number.
+# thus, number 999999.0 is used to indicate errors that have happened
+#
+# be super care, it is completely different with one-line command:
+#  -> if ($EKCAL == 'FAILED' ) echo '999999.0' > ELEC.energy
+#
+if ( $EKCAL == 'FAILED' ) then
+    echo '999999.0' > ELEC.energy
+endif
+
+
+if ( $bool_whether_gauss == 'y' ) then
+    if ( $bool_init == 'y' ) then
+        echo "$EKCAL      # Gaussian init" >> Backup-Energy.txt
+    else if ( $bool_good_update == 'y' ) then
+        echo "$EKCAL      # Gaussian update" >> Backup-Energy.txt
+    else
+        echo "$EKCAL      # Gaussian node" >> Backup-Energy.txt
+    endif
+
+    echo "# $EKCAL" >> Backup-Gaussian.txt
+    if ( -f qm.txt ) then
+        cat qm.txt >> Backup-Gaussian.txt
+    else
+        echo "FAILED: BOSS: file not exist: qm.txt" >> Backup-Gaussian.txt
+    endif
+    echo '' >> Backup-Gaussian.txt
+else
+    if ( $program_predict_to_choose == 'aenet' ) then
+        echo "$EKCAL      # AENET" >> Backup-Energy.txt
+    else if ( $program_predict_to_choose == 'spk' ) then
+        echo "$EKCAL      # SPK" >> Backup-Energy.txt
+    else
+        echo "Error: program to predict: UPDATENEEDED"
+        echo "Error: program to predict: UPDATENEEDED" >> HEAD
+    endif
+    if ( -f qm.txt ) then
+        cat qm.txt >> Backup-QM.txt
+    else
+        echo "FAILED: BOSS: file not exist: qm.txt" >> Backup-QM.txt
+    endif
+    echo '' >> Backup-QM.txt
+endif
+
+
+
