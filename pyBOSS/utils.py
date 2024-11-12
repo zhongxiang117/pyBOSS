@@ -824,12 +824,37 @@ def align_onto_z_axis(cor):
     return fin
 
 
-def randu(x):
+def randu(icnt,ichg=0):
+    irn = 0
+    icnt = 0
+    ichg = 1167
+    ichg0 = 1167
+    imul = 1173
+    icon = 458753759
     imod = 1048573
-    x = x * 1173 + 458753759
-    x = x % imod
-    y = x / imod
-    return x,y
+    icn0 = 458753759
+    jmul = 1161
+    jcon = 458716759
+    jmod = 1048573
+    jrn = 12469
+    icnt += 1
+    if icnt == ichg:
+        jrn = jrn * jmul + jcon
+        jrn = jrn % jmod
+        rnj = float(jrn) / float(jmod)
+        fac = 1.0+0.5*rnj if rnj > 0.5 else 1.0-0.5*rnj
+        fac = float(icn0) * fac
+        icon = int(fac)
+        jrn = jrn * jmul + jcon
+        jrn = jrn % jmod
+        rnj = float(jrn) / float(jmod)
+        fac = 1.0+0.5*rnj if rnj > 0.5 else 1.0-0.5*rnj
+        fac = float(ichg0) * fac
+        ichg = int(fac)
+        icnt = 0
+    irn = irn * imul + icon
+    irn = irn % imod
+    return float(irn) / float(imod)
 
 
 def randint(n1, n2, x=None):
