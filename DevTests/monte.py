@@ -3,7 +3,11 @@ from PyBOSS.boss_calc import PyBOSSCalc
 from PyBOSS.interactions import Interactions
 from PyBOSS.constants import PAR_ENERGIES
 
+import numpy as np
+
 import math
+import random
+import os
 
 
 class PyMonte:
@@ -465,20 +469,455 @@ class PyMonte:
                 """
 
 
-
-
-
-
-
-
-
-
-
-
     def movmol(self):
-        pass
+        if movvol == 1:
+            #go to 300
+            return
 
+        idists = np.zeros((nrdl, nrdfs), dtype=int)
 
+        isol = 1
+        if nsolut > 1:
+            while True:
+                isol = int(ranu() * nsolut) + 1
+                if nfatm[isol] == nlatm[isol] and icapat != nfatm[isol]:
+                    continue
+                break
+
+        anew = asol
+        anew1 = asol1
+        anew2 = asol2
+
+        icent = ncent1
+        if isol <= 2 and indsol == 0:
+            n = 1
+            m = nlatm[1] if nsolut == 1 else nlatm[2]
+            rdl = rdel[0]
+            adl = adel[0]
+        else:
+            rdl = rdel[isol - 1]
+            adl = adel[isol - 1]
+            icent = ncent2 if isol == 2 else nfatm[isol]
+            n = nfatm[isol]
+            m = nlatm[isol]
+
+        for i in range(3):
+            rr = -rdl + randu() * (2 * rdl)
+            for j in range(n, m):
+                anew[j, i] = asol[j, i] + rr
+                anew1[j, i] = asol1[j, i] + rr
+                anew2[j, i] = asol2[j, i] + rr
+
+            if islab == 1 and i == 2:
+                continue
+
+            if anew[icent, i] <= edg2[i]:
+                if anew[icent, i] < -edg2[i]:
+                    del_ = edge[i]
+                    for j in range(n, m):
+                        anew[j, i] += del_
+                        anew1[j, i] += del_
+                        anew2[j, i] += del_
+            else:
+                del_ = -edge[i]
+                for j in range(n, m):
+                    anew[j, i] += del_
+                    anew1[j, i] += del_
+                    anew2[j, i] += del_
+
+        achg = -adl + randu() * (2 * adl)
+        if (m - n) != 0:
+            self.rotate(achg)
+
+        del_ = zip
+        if nvdih + nvbnd + nvang == 0:
+            if maxovl == 1:
+                self.qtrf(anew, anew1, cori, nsatm, 0)  # subroutine
+                self.qtrf(anew, anew2, corf, nsatm, 0)
+                for i in range(nsatm):
+                    anew1[i, :] = cori[i, :]
+                    anew2[i, :] = corf[i, :]    
+
+            return  # equivalent to "go to 260" in Fortran
+
+        iflp = 0
+        if nvdih != 0:
+            for i in range(nvdih):
+                phinew[i] = phi[i]
+
+            m = ivdsum(isol)
+            if m == 0:
+                return
+
+            nran = m
+            if m > 3:
+                nran = 2 + int(ranu() * (m - 2))
+                if nran > maxvar:
+                    nran = maxvar
+                ranint(nmr, nran, m)
+            else:
+                nmr = [1, 2, 3]
+
+            knt = 0
+            j = 1
+            nflip2 = 2 * nflip
+            if nflip2 < 6:
+                nflip2 = 6
+
+            for i in range(nvdih):
+                if isolut[idih4[i]] != isol:
+                    continue
+                knt += 1
+                if knt != nmr[j]:
+                    continue
+                j += 1
+                if flip[i] != zip:
+                    kntflp += 1
+                    if kntflp != nflip2:
+                        continue
+                    del_ = flip[i]
+                    if ranu() < 0.5:
+                        del_ = -del_
+                    phinew[i] = phi[i] + del_
+                    kntflp = 0
+                    iflp = 1
+                    break
+                phinew[i] = phi[i]
+                del_ = -dihdl[i] + ranu() * dihdl2[i]
+                phinew[i] += del_
+
+            for i in range(nvdih):
+                if phinew[i] > twopi:
+                    phinew[i] -= twopi
+                elif phinew[i] < zip:
+                    phinew[i] += twopi
+
+            if iflp == 1:
+                nflptr = -nflptr  # Flip sign
+
+            if nvddep != 0:
+                for i in range(nvddep):
+                    ii = nvdih - nvddep + i
+                    iii = idd[i]
+                    phinew[ii] = phinew[iii]
+
+        for i in range(nvdih):
+            phine1[i] = phinew[i]
+            phine2[i] = phinew[i]
+
+        if nvbnd != 0:
+            for i in range(nvbnd):
+                bndnew[i] = bnd[i]
+
+            m = ivbsum(isol)
+            if m == 0:
+                return
+
+            nran = m
+            if m > 3:
+                nran = 2 + int(ranu() * (m - 2))
+                if nran > maxvar:
+                    nran = maxvar
+                ranint(nmr, nran, m)
+            else:
+                nmr = [1, 2, 3]
+
+            iscale = 1
+            if nvang > 0:
+                iscale += 1
+            if nvdih > 0:
+                iscale += 1
+
+            scalinv = (scalinv * (0.8 + 0.2 * (1.0 / iscale**3))) / dsqrt(iscale)
+
+            knt = 0
+            j = 1
+            for i in range(nvbnd):
+                if isolut[ibnd1[i]] != isol:
+                    continue
+                knt += 1
+                if knt != nmr[j]:
+                    continue
+                j += 1
+                bndnew[i] += scalinv * (ranu() * bnddl2[i] - bnddl[i])
+
+            if nvbdep != 0:
+                for i in range(nvbdep):
+                    ii = nvbnd - nvbdep + i
+                    iii = ibd[i]
+                    bndnew[ii] = bndnew[iii]
+
+            for i in range(nvbnd):
+                bndne1[i] = bndnew[i] + (bndr1[i] - bndr0[i])
+                bndne2[i] = bndnew[i] + (bndr2[i] - bndr0[i])
+
+        if nvang != 0:
+            for i in range(nvang):
+                angnew[i] = ang[i]
+
+            m = ivasum(isol)
+            if m == 0:
+                return
+
+            nran = m
+            if m > 3:
+                nran = 2 + int(ranu() * (m - 2))
+                if nran > maxvar:
+                    nran = maxvar
+                ranint(nmr, nran, m)
+            else:
+                nmr = [1, 2, 3]
+
+            iscale = 1
+            if nvbnd > 0:
+                iscale += 1
+            if nvdih > 0:
+                iscale += 1
+
+            scalinv = (scalinv * (0.8 + 0.2 * (1.0 / iscale**3))) / dsqrt(iscale)
+
+            knt = 0
+            j = 1
+            for i in range(nvang):
+                if isolut[iang3[i]] != isol:
+                    continue
+                knt += 1
+                if knt != nmr[j]:
+                    continue
+                j += 1
+                angnew[i] += scalinv * (ranu() * angdl2[i] - angdl[i])
+
+            if nvaep != 0:
+                for i in range(nvaep):
+                    ii = nvang - nvaep + i
+                    iii = iangd[i]
+                    angnew[ii] = angnew[iii]
+
+            for i in range(nvang):
+                angne1[i] = angnew[i] + (angr1[i] - angr0[i])
+                angne2[i] = angnew[i] + (angr2[i] - angr0[i])
+        self.makemol2()
+
+        if isqm == 1:
+            return
+        
+        self.eintra(x, 1)
+        del_value = edihne - edihol + ebndne - ebndol + eangne - eangol
+        if del_value > tk25:
+            enew = eold + tk25
+            return
+        
+        self.eintra(x, 2)
+        del_value += enbne - enbol
+        
+        # Initialization with abnormal characters to avoid unexpected errors
+        headfile = '~+`#@!'
+        xztype = '~+%#@'
+        headfile = os.getenv('HEAD', headfile)
+        if headfile == 'HEAD  ':
+            with open(headfile, 'r') as file:
+                xztemp, xztype = file.readline().split()
+        
+        if igbsa == 1:
+            self.calcegb()
+            self.savol3(0, esasa_new)
+            del_value += egb_new - egb + esasa_new - esasa
+
+        if del_value > tk25:
+            enew = eold + tk25
+            return
+        
+        self.xxpot()
+        del_value += exxnew - exxold
+        del_value += eponnew - epoold
+        
+        if del_value > tk25:
+            enew = eold + tk25
+            return
+        
+        esone = esonc = esonl = eson1 = eson2 = 0.0
+        
+        if natmx == 0:
+            return
+        
+        for i in range(1, nmol + 1):
+            modsv = modsv1
+            ntyp = nstyp[i]
+            if ntyp == 2:
+                modsv = modsv2
+            if modsv > 2:
+                e = sxpot(i)
+            else:
+                e = wxpot(i)
+            emov[i] = e
+            emovc[i] = ecsx
+            emovl[i] = elsx
+            esone += e
+            esonc += ecsx
+            esonl += elsx
+            esmov[i] = es1
+            eson1 += es1
+            esmov2[i] = es2
+            eson2 += es2
+            wnew[i] = wik
+            if ntyp == 2:
+                continue
+            for j in range(1, nrdfs + 1):
+                k = idint(rinc * (rnew[j] - rdlmin)) + 1
+                if k <= nrdl:
+                    if k >= 1:
+                        idists[k][j] += 1
+        
+        enew = eold + esone - esonol + del_value
+        
+        if qmname == 'G09U' and xztype == 'FALSE':
+            tk20 = 20.0 / beta
+            del_value += esone - esonol
+            if del_value < -tk20:
+                qmname = 'G091'
+            elif del_value <= tk20:
+                x = random.random()
+                xb = beta
+                if isol == lhtsol:
+                    xb = betlht
+                if lhtsol == 9999:
+                    xb = betlht
+                emet = math.exp(-xb * del_value)
+                if emet >= x:
+                    qmname = 'G092'
+                else:
+                    qmname = 'G09D'
+            else:
+                qmname = 'G09L'
+            
+            if qmname in ['G091', 'G092']:
+                return
+        
+        if natmx == 0:
+            return
+        
+        delv = randu() * vdl2 - vdel
+        if ivxyz == 1:
+            delv *= 0.75
+        vnew = vold + delv
+        nmovsv = nmov
+        
+        for i in range(1, 4):
+            oldedge[i] = edge[i]
+        
+        if ivxyz != 1:
+            fac = (vnew / vold) ** (1.0 / 3.0)
+            slvfac = fac - 1.0
+            for i in range(1, 4):
+                edge[i] = fac * edge[i]
+                edg2[i] = 0.5 * edge[i]
+            
+            for j in range(1, 4):
+                for i in range(1, nmol + 1):
+                    del_value = slvfac * ac(i, 1, j)
+                    natoms = nsvat(nstyp[i])
+                    for k in range(1, natoms + 1):
+                        ac(i, k, j) += del_value
+                    soldel(j) = slvfac * (asol(ncent1, j) + asol(ncent2, j)) / 2.0
+                    del_value = soldel(j)
+                    for i in range(1, nsatm + 1):
+                        asol(i, j) += del_value
+                        asol1(i, j) += del_value
+                        asol2(i, j) += del_value
+        else:
+            if islab != 1:
+                ivax = int(3.0 * randu()) + 1
+            else:
+                ivax = int(2.0 * randu()) + 1
+            
+            del_value = delv * edge[ivax] / vold
+            edge[ivax] += del_value
+            edg2[ivax] = 0.5 * edge[ivax]
+            slvfac = vnew / vold - 1.0
+            
+            for i in range(1, nmol + 1):
+                del_value = slvfac * ac(i, 1, ivax)
+                natoms = nsvat(nstyp[i])
+                for k in range(1, natoms + 1):
+                    ac(i, k, ivax) += del_value
+            
+            soldel = np.zeros((3,0))
+            soldel(ivax) = slvfac * (asol(ncent1, ivax) + asol(ncent2, ivax)) / 2.0
+            for i in range(1, nsatm+1):
+                asol(i, ivax) += del_value
+                asol1(i, ivax) += del_value
+                asol2(i, ivax) += del_value
+        
+        esone = esonc = esonl = eson1 = eson2 = enew = eone = 0.0
+        for j in range(1, nrdfs + 1):
+            for i in range(1, nrdl + 1):
+                idists(i, j) = 0
+        
+        if noss == 1:
+            return
+        
+        knt = 1
+        n = nmol - 1
+        for i in range(1, n + 1):
+            k = i + 1
+            nmov = i
+            ntyp = modsv1
+            if nstyp(i) == 2:
+                ntyp = modsv2
+            natoms = nsvat(nstyp(i))
+            for m in range(1, 4):
+                for kk in range(1, natoms + 1):
+                    anew(kk, m) = ac(i, kk, m)
+            
+            for j in range(k, nmol + 1):
+                if nsvat(2) == 0:
+                    if modsv1 > 2:
+                        e = self.sspt(j)
+                    else:
+                        e = self.wxpot(j)
+                else:
+                    jtyp = modsv1
+                    if nstyp(j) == 2:
+                        jtyp = modsv2
+                    if ntyp <= 2 and jtyp <= 2:
+                        e = self.wxpot(j)
+                    else:
+                        e = self.sspt(j)
+                eij(knt) = e
+                enew += e
+                knt += 1
+                if i == nmovsv:
+                    emov(j) = e
+                else:
+                    if j != nmovsv:
+                        continue
+                    emov(i) = e
+                eone += e
+        
+        movtyp = 1
+        for j in range(1, 4):
+            for i in range(1, nsatm + 1):
+                anew(i, j) = asol(i, j)
+                anew1(i, j) = asol1(i, j)
+                anew2(i, j) = asol2(i, j)
+        
+        for i in range(1, nmol + 1):
+            modsv = modsv1
+            ntyp = nstyp(i)
+            if ntyp == 2:
+                modsv = modsv2
+            if modsv > 2:
+                e = self.sxpot(i)
+            else:
+                e = self.wxpot(i)
+            enew += e
+            esone += e
+            esonc += ecsx
+            esonl += elsx
+            eson1 += es1
+            ess1(i) = es1
+            eson2 += es2
+            ess2(i) = es2
 
     def ssljco(self):
         pass
