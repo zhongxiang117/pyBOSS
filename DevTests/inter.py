@@ -1247,11 +1247,33 @@ def movsvn(
             wnmax = max(wnmax, wnew[i])
 
 
-import random  # For generating random numbers
+def ranint(nmr, nran, nvar):
+    k = 0
+    xvar = float(nvar)
+    while True:
+        nmr[k] = int(xvar * ranu()) + 1
+        bo = True
+        for i in range(k):
+            if nmr[k] == nmr[i]:
+                bo = False
+                break
+        if bo:
+            k += 1
+            if k >= nran: break
+    return sorted(nmr)
+
 
 def movmol(
     movvol, nrdfs, nrdl, nsolut, nfatm, nlatm, icapat, anew, asol, asol1, asol2, anew1, anew2,
-    ncent1, indsol, rdels, adels, ncent2, islab, edge, edg2, 
+    ncent1, indsol, rdels, adels, ncent2, islab, edge, edg2, nvdih, nvbnd, nvang, maxovl, nsatm,
+    cori, corf, phinew, phi, ivdsum, maxvar, nflip, idih4, flip, dihdl, dihdl2, twopi, nvddep,
+    idd, phine1, phine2, bndnew, bnd, ivbsum, ibnd1, nvbdep, bndne1, bnr2, bnr1, bnrd0, bndne2,
+    angnew, ang, ivasum, angdl, angdl2, bnddl, bnddl2, ibd, iang3, nvadep, iad, angne1, angne2,
+    angt1, angt0, isqm, edihne, edihol, ebndne, ebndol, eangne, eangol, eold, tk25, enbne, enbol,
+    igbsa, exxnew, exxold, eponw, epoold, iewald, natmx, nmol, modsv1, nstyp, modsv2, emov, ecsx,
+    elsx, essc, essl,  ess, ess1, ess2, es1, es2, wik,  rnew, rinc, rdlemin, wnew, wkc, nopref,
+    esinol, angt2, emovc, emovl, esmov, esmov2, esonol, beta, lhtsol, betlht, vdl2, vdel, ivxyz,
+    vold, ac, nsvat, noss, eij
 ):
     if movvol == 1:
         # goto 300
@@ -1316,5 +1338,465 @@ def movmol(
                 anew[j][i] += delta
                 anew1[j][i] += delta
                 anew2[j][i] += delta
+
+    achg = -adl + ranu() * (adl + adl)
+    if (m-n) != 0:
+        rotate(achg)
+    
+    if (nvdih + nvbnd + nvang) == 0:
+        if maxovl == 1:
+            qtrf(anew, anew1, cori, nsatm, 0)
+            qtrf(anew, anew2, corf, nsatm, 0)
+            for i in range(nsatm):
+                anew1[i][0] = cori[i][0]
+                anew1[i][1] = cori[i][1]
+                anew1[i][2] = cori[i][2]
+                anew2[i][0] = corf[i][0]
+                anew2[i][1] = corf[i][1]
+                anew2[i][2] = corf[i][2]
+        # goto 260
+        return
+    
+    iflp = 0
+    if nvdih != 0:
+        for i in range(nvdih):
+            phinew[i] = phi[i]
+        
+        m = ivdsum[isol]
+        if m == 0:
+            # goto 140
+            return
+        
+        nran = m
+        if m > 3:
+            nran = 2 + int(ranu() * (m-2))
+            if nran > maxvar:
+                nran = maxvar
+            ranint(nmr, nran, m)
+        else:
+            nmr = [1, 2, 3]
+        
+        knt = 0
+        j = 0
+        nflip2 = 2 * nflip
+        if nflip2 < 6:
+            nflip2 = 6
+        
+        for i in range(nvdih):
+            if isolut(idih4[i]) != isol:
+                continue
+            knt += 1
+            if knt != nmr[j]:
+                continue
+            j += 1
+            if flip[i] != 0:
+                raise NotImplementedError()
+            
+            phinew[i] = phi[i]
+            phinew[i] += -dihdl[i] + ranu() * dihdl2[i]
+            
+            if phinew[i] > twopi:
+                phinew[i] -= twopi
+            elif phinew[i] < 0:
+                phinew[i] += twopi
+        
+        if iflp == 1:
+            nflptr = -nflptr
+        
+        if nvddep != 0:
+            for i in range(nvddep):
+                ii = nvdih - nvddep + i
+                iii = idd[i]
+                phinew[ii] = phinew[iii]
+        
+        for i in range(nvdih):
+            phine1[i] = phinew[i]
+            phine2[i] = phinew[i]
+    
+    if nvbnd != 0:
+        for i in range(nvbnd):
+            bndnew[i] = bnd[i]
+        
+        m = ivbsum[isol]
+        if m == 0:
+            # goto 190
+            return
+        
+        nran = m
+        if m > 3:
+            nran = 2 + int(ranu() * (m-2))
+            if nran > maxvar:
+                nran = maxvar
+            ranint(nmr, nran, m)
+        else:
+            nmr = [1, 2, 3]
+        
+        scalinv = (0.80 + 0.2 * (1.0 / nran**3)) / math.sqrt(nran)
+        iscale = 1
+        if nvang > 0:
+            iscale += 1
+        if nvdih > 0:
+            iscale += 1
+        scalinv = (scalinv * (0.8 + 0.2 * (1.0 / iscale**3))) / math.sqrt(iscale)
+        
+        knt = 0
+        j = 0
+        for i in range(nvbnd):
+            if isolut(ibnd1[i]) != isol:
+                continue
+            knt += 1
+            if knt != nmr[j]:
+                continue
+            j += 1
+            bndnew[i] = bnd[i] + scalinv * (ranu() * bnddl2[i] - bnddl[i])
+        
+        if nvbdep != 0:
+            for i in range(nvbdep):
+                ii = nvbnd - nvbdep + i
+                iii = ibd[i]
+                bndnew[ii] = bndnew[iii]
+        
+        for i in range(nvbnd):
+            bndne1[i] = bndnew[i] + (bnr1[i] - bnrd0[i])
+            bndne2[i] = bndnew[i] + (bnr2[i] - bnrd0[i])
+    
+    if nvang != 0:
+        for i in range(nvang):
+            angnew[i] = ang[i]
+        
+        m = ivasum[isol]
+        if m == 0:
+            # goto 240
+            return
+        
+        nran = m
+        if m > 3:
+            nran = 2 + int(ranu() * (m-2))
+            if nran > maxvar:
+                nran = maxvar
+            ranint(nmr, nran, m)
+        else:
+            nmr = [1, 2, 3]
+        
+        scalinv = (0.80 + 0.2 * (1.0 / nran**3)) / math.sqrt(nran)
+        iscale = 1
+        if nvbnd > 0:
+            iscale += 1
+        if nvdih > 0:
+            iscale += 1
+        scalinv = (scalinv * (0.8 + 0.2 * (1.0 / iscale**3))) / math.sqrt(iscale)
+        
+        knt = 0
+        j = 0
+        for i in range(nvang):
+            if isolut(iang3[i]) != isol:
+                continue
+            knt += 1
+            if knt != nmr[j]:
+                continue
+            j += 1
+            angnew[i] = ang[i] + scalinv * (ranu() * angdl2[i] - angdl[i])
+        
+        if nvadep != 0:
+            for i in range(nvadep):
+                ii = nvang - nvadep + i
+                iii = iad[i]
+                angnew[ii] = angnew[iii]
+        
+        for i in range(nvang):
+            angne1[i] = angnew[i] + (angt1[i] - angt0[i])
+            angne2[i] = angnew[i] + (angt2[i] - angt0[i])
+    
+    makml2()
+    if isqm != 1:
+        eintra(x, 1)
+        del_value = edihne - edihol + ebndne - ebndol + eangne - eangol
+        if del_value > tk25:
+            enew = eold + tk25
+            return
+    
+    eintra(x, 2)
+    del_value += enbne - enbol
+    headfile = '~+`#@!'
+    xztype = '~+%#@'
+    headfile = 'head'    
+    if headfile == 'head  ':
+        with open(headfile, 'r') as f:
+            xztemp, xztype = f.read().split()
+    
+    if igbsa == 1:
+        raise NotImplementedError()
+    
+    if del_value > tk25:
+        enew = eold + tk25
+        return
+
+    xxpot()
+    del_value += exxnew - exxold
+
+    polpot()
+    del_value += eponw - epoold
+    
+    if del_value > tk25:
+        enew = eold + tk25
+        return
+    
+    if iewald == 1:
+        raise NotImplementedError()
+    
+    esone = 0.0
+    esonc = 0.0
+    esonl = 0.0
+    eson1 = 0.0
+    eson2 = 0.0
+    
+    if natmx == 0:
+        # goto 290
+        return
+    
+    for i in range(nmol):
+        modsv = modsv1
+        ntyp = nstyp[i]
+        
+        if ntyp == 2:
+            modsv = modsv2
+        
+        if modsv > 2:
+            e = sxpot[i]
+        else:
+            e = wxpot[i]
+        
+        emov[i] = e
+        emovc[i] = ecsx
+        emovl[i] = elsx
+        esone += e
+        esonc += ecsx
+        esonl += elsx
+        esmov[i] = es1
+        eson1 += es1
+        esmov2[i] = es2
+        eson2 += es2
+        wnew[i] = wik
+        
+        if ntyp == 2:
+            continue
+        
+        for j in range(nrdfs):
+            k = int(rinc * (rnew[j] - rdlemin)) + 1
+            if k <= nrdl:
+                if k >= 1:
+                    idists[k, j] += 1
+    
+    enew = eold + esone - esonol + del_value
+    
+    if qmname == 'g09u' and xztype == 'false':
+        tk20 = 20.0 / beta
+        del_value += esone - esonol
+        if del_value < -tk20:
+            qmname = 'g091'
+        elif del_value <= tk20:
+            x = ranu()
+            xb = beta
+            if isol == lhtsol:
+                xb = betlht
+            if lhtsol == 9999:
+                xb = betlht
+            emet = math.exp(-xb * del_value)
+            if emet >= x:
+                qmname = 'g092'
+            else:
+                qmname = 'g09d'
+        else:
+            qmname = 'g09l'
+        
+        if qmname == 'g091' or qmname == 'g092':
+            # goto 255
+            return
+    
+    if natmx == 0:
+        # goto 470
+        return
+    
+    delv = ranu() * vdl2 - vdel
+    if ivxyz == 1:
+        delv *= 0.75
+    
+    vnew = vold + delv
+    nmovsv = nmov
+    
+    # Copy edge values
+    oldedge = edge[:]
+    
+    if ivxyz != 1:
+        fac = (vnew / vold) ** (1.0 / 3.0)
+        slvfac = fac - 1.0
+        
+        for i in range(3):
+            edge[i] = fac * edge[i]
+            edg2[i] = 0.5 * edge[i]
+        
+        for j in range(3):
+            for i in range(nmol):
+                tmp = slvfac * ac[i][0][j]
+                natoms = nsvat[nstyp[i]]
+                
+                for k in range(natoms):
+                    ac[i][k][j] += tmp
+                    
+                soldel[j] = slvfac * (asol[ncent1][j] + asol[ncent2][j]) / 2.0
+                tmp = soldel[j]
+                
+                for i in range(nsatm):
+                    asol[i][j] += tmp
+                    asol1[i][j] += tmp
+                    asol2[i][j] += tmp
+    else:
+        if islab != 1:
+            ivax = int(3.0 * ranu()) + 1
+        else:
+            ivax = int(2.0 * ranu()) + 1
+        
+        edge[ivax] = delv * edge[ivax] / vold
+        edg2[ivax] = 0.5 * edge[ivax]
+        
+        slvfac = vnew / vold - 1.0
+        
+        for i in range(nmol):
+            tmp = slvfac * ac[i][0][ivax]
+            natoms = nsvat[nstyp[i]]
+            for k in range(natoms):
+                ac[i][k][ivax] += tmp
+        
+        soldel = [0.0, 0.0, 0.0]
+        tmp = slvfac * (asol[ncent1][ivax] + asol[ncent2][ivax]) / 2.0
+        soldel[ivax] += tmp
+        for i in range(nsatm):
+            asol[i][ivax] += tmp
+            asol1[i][ivax] += tmp
+            asol2[i][ivax] += tmp
+    
+    esone = esonc = esonl = eson1 = eson2 = enew = eone = 0.0
+    for j in range(nrdfs):
+        for i in range(nrdl):
+            idists[i][j] = 0
+    
+    if noss == 1:
+        # goto 425
+        return
+    
+    knt = 1
+    n = nmol - 1
+    
+    for i in range(n):
+        k = i + 1
+        nmov = i
+        ntyp = modsv1
+        
+        if nstyp[i] == 2:
+            ntyp = modsv2
+        
+        natoms = nsvat[nstyp[i]]
+        for m in range(3):
+            for kk in range(natoms):
+                anew[kk][m] = ac[i][kk][m]
+        
+        for j in range(k, nmol):
+            if nsvat[2] == 0:
+                if modsv1 > 2:
+                    e = sspot(j)
+                else:
+                    e = wwpot(j)
+            else:
+                jtyp = modsv1
+                if nstyp[j] == 2:
+                    jtyp = modsv2
+                if ntyp <= 2 and jtyp <= 2:
+                    e = wwpot(j)
+                else:
+                    e = sspot(j)
+            
+            eij[knt] = e
+            enew += e
+            knt += 1
+            
+            if i == nmovsv:
+                emov[j] = e
+            else:
+                if j != nmovsv:
+                    continue
+                emov[i] = e
+            eone += e
+    
+    movtyp = 1
+    for j in range(3):
+        for i in range(nsatm):
+            anew[i][j] = asol[i][j]
+            anew1[i][j] = asol1[i][j]
+            anew2[i][j] = asol2[i][j]
+    
+    for i in range(nmol):
+        modsv = modsv1
+        ntyp = nstyp[i]
+        
+        if ntyp == 2:
+            modsv = modsv2
+        
+        if modsv > 2:
+            e = sxpot(i)
+        else:
+            e = wxpot(i)
+        
+        enew += e
+        esone += e
+        esonc += ecsx
+        esonl += elsx
+        eson1 += es1
+        ess1[i] = es1
+        eson2 += es2
+        ess2[i] = es2
+        wnew[i] = wik
+        ess[i] = e
+        essc[i] = ecsx
+        essl[i] = elsx
+        
+        if ntyp == 2:
+            continue
+        
+        for m in range(nrdfs):
+            l = int(rinc * (rnew[m] - rdlemin)) + 1
+            if l <= nrdl:
+                if l >= 1:
+                    idists[l][m] += 1
+    
+    enew += exxold + edihol + enbol + ebndol + eangol + esinol
+    polpot()
+    enew += eponw
+    enew += ecut()
+    
+    if iewald == 1:
+        raise NotImplementedError()
+    
+    if nopref == 0:
+        wnsum = 0.0
+        wnmax = 0.0
+        
+        for i in range(nmol):
+            wnew[i] = 1.0 / (wnew[i] + wkc)
+            wnsum += wnew[i]
+        
+        tmp = 1.0 / wnsum
+        
+        for i in range(nmol):
+            wnew[i] *= tmp
+            wnmax = max(wnmax, wnew[i])
+    
+    return
+
+
+
+
+
+
+
 
 
