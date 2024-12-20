@@ -7,8 +7,8 @@ Priority:
     both used for data files locating.
 """
 
-from PyBOSS.__init__ import __version__
-from PyBOSS.constants import PAR_SETTINGS, PARS_CMD, PYBOSS_DATA_FILE_PATH
+from .__init__ import __version__
+from .constants import PAR_SETTINGS, PARS_CMD, PYBOSS_DATA_FILE_PATH
 
 import io
 import os
@@ -138,7 +138,7 @@ def read_parameter_file(filename):
     mybool = True
     mypars = {}
     pars = []
-    title = f.readline()
+    mypars['title'] = f.readline().strip()
 
     dump = f.readline()
     line = f.readline().rstrip() + ' '*80
@@ -498,7 +498,8 @@ def read_parameter_file(filename):
         ('A5,I4,2F11.4', line.rstrip())
     ])
 
-    f.close()
+    if isinstance(filename,str):
+        f.close()
     for g in pars:
         for x in g[:-1]:      # always ignore the last
             k = x[0]
@@ -537,10 +538,8 @@ def read_parameter_file(filename):
                     print(f'Fatal: format: {g[-1][0]}:\n  -> {g[-1][1]}')
                     mybool = False
             mypars[nk] = nv
-
-    if mybool:
-        return mypars
-    return {}
+    mypars['bool'] = mybool
+    return mypars
 
 
 def write_settings_inner(envsettings={}, file='configs.txt'):
@@ -607,7 +606,7 @@ def read_config_file(filename):
             f = open(filename)
         else:
             print(f'Warning: not a file {filename}')
-            return []
+            return {}
     elif hasattr(filename,'read'):      # for `io.StringIO()`
         f = filename
     else:
