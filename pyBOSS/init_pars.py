@@ -1,132 +1,116 @@
-from PyBOSS.constants import SOLVENT_MODE, SOLVENT_PARS
+from .constants import SOLVENT_PARS
 
 
-def init_pars(g_x_inner_pars):
-    """In-place editions of input parameter"""
-    g_c_pconv = 0.000014576
-    g_c_boltz = 0.00198717
+def init_pars(dpars):
+    """In-place editions of input parameter
 
-    rc0 = g_x_inner_pars['rc0']
-    rc1 = g_x_inner_pars['rc1']
-    rc2 = g_x_inner_pars['rc2']
+    Idea:
+        line-by-line translation, to be maximumly compatible with BOSS source codes
+    """
+
+    dpars['pconv'] = pconv = 0.000014576
+    dpars['boltz'] = boltz = 0.00198717
+
+    rc0 = dpars['rc0']
+    rc1 = dpars['rc1']
+    rc2 = dpars['rc2']
     if abs(rc0-rc1)<0.0001 and abs(rc1-rc2)<0.0001:
         nofep = 1
     else:
         nofep = 0
-    if g_x_inner_pars['icalc'] > 1:
+    if dpars['icalc'] > 1:
         nofep = 1
-    g_x_inner_pars['nofep'] = nofep
+    dpars['nofep'] = nofep
 
-    tk = g_x_inner_pars['t'] + 273.15
-    beta = 1.0 / (g_c_boltz*tk)
-    pvcon = g_x_inner_pars['p'] * g_c_pconv
-    g_x_inner_pars['tk'] = tk
-    g_x_inner_pars['beta'] = beta
-    g_x_inner_pars['pvcon'] = pvcon
+    tk = dpars['t'] + 273.15
+    dpars['beta'] = 1.0 / (boltz*tk)
+    dpars['pvcon'] = dpars['p'] * pconv
+    dpars['tk'] = tk
 
-    g_x_inner_pars['betlht'] = 1.0 / (g_c_boltz*(g_x_inner_pars['tlht']+273.15))
-    g_x_inner_pars['t1'] = g_x_inner_pars['t'] + 2.0
-    g_x_inner_pars['t2'] = g_x_inner_pars['t'] - 2.0
-    g_x_inner_pars['tk1'] = g_x_inner_pars['t'] + 2.0 + 273.15
-    g_x_inner_pars['tk2'] = g_x_inner_pars['t'] - 2.0 + 273.15
-    g_x_inner_pars['beta1'] = 1.0 / (g_c_boltz * g_x_inner_pars['tk1'])
-    g_x_inner_pars['beta2'] = 1.0 / (g_c_boltz * g_x_inner_pars['tk2'])
-
-    svmod1 = g_x_inner_pars['svmod1']
+    # solvent 1
+    svmod1 = dpars['svmod1']
     if svmod1 and svmod1 in SOLVENT_PARS:
         sv1p = SOLVENT_PARS[svmod1]
     else:
-        print(f'Fatal: currently not supported: svmod1: {svmod1}')
+        print(f'Fatal: not supported: svmod1: {svmod1}')
         exit()
 
-    solvent1_modenum = sv1p[1]
-    solvent1_atomnum = len(sv1p[3])
-    g_x_inner_pars['solvent1_modenum'] = solvent1_modenum
-    g_x_inner_pars['solvent1_atomnum'] = solvent1_atomnum
-    g_x_inner_pars['igbsa'] = 1 if solvent1_modenum == 99 else 0
-    g_x_inner_pars['modsv1'] = solvent1_modenum
+    dpars['icussl'] = 0
+    dpars['svmod1'] = sv1p[0]
+    dpars['modsv1'] = modsv1 = sv1p[1]
+    dpars['natom1'] = len(sv1p[3])
+    dpars['igbsa'] = 1 if modsv1 == 99 else 0
+    dpars['modcus'] = 1 if modsv1 == 20 else 0
+    if modsv1 == 99:
+        dpars['nvchg'] = 999999
+        dpars['nschg'] = 1
+        dpars['nrdf'] = 0
+        dpars['nmol'] = 0
+        dpars['ibox'] = 0
+        dpars['svmod2'] = ''
 
+    if dpars['scllj'] == 0.0 or dpars['noss'] == 0:
+        dpars['scllj'] = 1.0
+    if dpars['noss'] == 0 and modsv1 != 99:
+        fdielec = 1.0
+    if fdielec == 0.0: fdielec = 1.0
+    dpars['dielec'] = fdielec
 
-    if solvent1_modenum > 4:
-        x = -5.0 * g_x_inner_pars['nmol']
-    else:
-        x = -10.1 * g_x_inner_pars['nmol']
-    g_x_inner_pars['ct1'] = x * (g_x_inner_pars['beta']-g_x_inner_pars['beta1'])
-    g_x_inner_pars['ct2'] = x * (g_x_inner_pars['beta']-g_x_inner_pars['beta2'])
-
-
-    if g_x_inner_pars['scllj'] == 0.0:
-        g_x_inner_pars['scllj'] = 1.0
-
-
-    svmod2 = g_x_inner_pars['svmod2']
-    if svmod2 and svmod2 in SOLVENT_PARS:
-        sv2p = SOLVENT_PARS[svmod2]
-    else:
-        print(f'Fatal: currently not supported: svmod2: {svmod2}')
-        exit()
-
-    solvent2_modenum = sv2p[1]
-    solvent2_atomnum = len(sv2p[3])
-    ncussl = 1 if solvent1_modenum == 20 else 0
-    if solvent2_modenum == 0:
-        pass
-    elif solvent2_modenum+solvent1_modenum == 3:
-        print('Do Not Use TIP3P and TIP4P Simultaneously - Aborted')
-        exit()
-    elif solvent2_modenum == 20:
-        if solvent1_modenum == 20:
-            print('Only One Solvent Can Be Flexible (Other) - Aborted')
+    # solvent 2
+    svmod2 = dpars['svmod2']
+    if svmod2:
+        if svmod2 in SOLVENT_PARS:
+            sv2p = SOLVENT_PARS[svmod2]
+        else:
+            print(f'Fatal: not supported: svmod2: {svmod2}')
             exit()
-        else:
-            ncussl = 2
-    g_x_inner_pars['icussl'] = 1 if ncussl != 0 else 0
-    g_x_inner_pars['i_custom_solvent'] = ncussl
-    g_x_inner_pars['solvent2_modenum'] = solvent2_modenum
-    g_x_inner_pars['modsv2'] = solvent2_modenum
-    g_x_inner_pars['solvent2_atomnum'] = solvent2_atomnum
-    g_x_inner_pars['ncutas'] = [1,1]
-    if g_x_inner_pars['ncents'] <= 0:
-        g_x_inner_pars['ncents'] = 1
-    icuta = g_x_inner_pars['icutas']
-    g_x_inner_pars['icuta'] = [i for i in icuta]
-    icutas = [[0 for i in range(5)] for j in range(2)]  # index starts from zero
-    icutas[0][0] = 1
-    icutas[1][0] = 1
-    ncutas = [1,1]
-    if g_x_inner_pars['icussl'] == 1:
-        ncut = len(icuta) - icuta.count(0)
-        if ncut == 0:
-            icutas[ncussl][0] = g_x_inner_pars['ncents']
-        else:
-            ncutas[ncussl-1] = ncut
-    g_x_inner_pars['icutas'] = icutas
-    g_x_inner_pars['ncutas'] = ncutas
 
+        dpars['svmod2'] = sv2p[0]
+        dpars['modsv2'] = modsv2 = sv2p[1]
+        dpars['natom2'] = len(sv2p[3])
+        dpars['igbsa'] = 1 if modsv2 == 99 else 0
 
-    if g_x_inner_pars['rsolv'] <= 0.0:
-        radius = 1.4
-        if solvent1_modenum < 99:
-            radius = 3.2
-        if solvent1_modenum < 3 or solvent1_modenum == 13:
-            radius = 1.4
-        g_x_inner_pars['rsolv'] = radius
+        if modsv2+modsv1 == 3:
+            print('Fatal: do not use TIP3P and TIP4P simultaneously')
+            exit()
+        elif modsv2 == 20:
+            if modsv1 == 20:
+                print('Fatal: only one solvent can be flexible')
+                exit()
+            else:
+                dpars['modcus'] = 2
+    else:
+        dpars['modsv2'] = 0
+        dpars['natom2'] = 0
 
+    if dpars['rsolv'] <= 0.0:
+        rsolv = 1.4
+        if modsv1 < 99:
+            rsolv = 3.2
+        if modsv1 < 3 or modsv1 == 13:
+            rsolv = 1.4
+        dpars['rsolv'] = rsolv
 
-    if g_x_inner_pars['noss'] != 0:
-        g_x_inner_pars['nrdf'] = 0
-        g_x_inner_pars['nrdfs'] = 0
-        g_x_inner_pars['nofep'] = 1
-        g_x_inner_pars['nopref'] = 1
-        g_x_inner_pars['wkc'] = 20000.0
+    # wait for update
+    dpars['nvsdih'] = dpars['nvsang'] = dpars['nvsbnd'] = 0
+    if dpars['nvsdih'] + dpars['nvsang'] + dpars['nvsbnd'] != 0:
+        dpars['iflxsl'] = 1
+    else:
+        dpars['iflxsl'] = 0
 
-    if g_x_inner_pars['wkc'] <= 0.0:
-        g_x_inner_pars['wkc'] = 200.0
-    if g_x_inner_pars['wkc'] > 1000.0:
-        g_x_inner_pars['nopref'] = 1
+    dpars['nsvat'] = [dpars['natom1'],dpars['natom2']]
+    dpars['natmx'] = max(dpars['nsvat'])
 
+    dpars['nopref'] = 0
+    if dpars['noss'] != 0:
+        dpars['noss'] = 1
+        dpars['nrdf'] = 0
+        dpars['nrdfs'] = 0
+        dpars['nofep'] = 1
+        dpars['nopref'] = 1
+        dpars['wkc'] = 20000.0
 
-    qmname = g_x_inner_pars['qmname']
+    qmname = dpars['qmname']
     if qmname in ['am1','am1s']:
         iampm = 1
     elif qmname in ['pm3','pm3s']:
@@ -141,326 +125,336 @@ def init_pars(g_x_inner_pars):
         iampm = 0
     else:
         iampm = -1
-        print('Unavailable QM Choice: QMNAME: - Aborted')
+        print(f'Fatal: unavailable QM choice: QMNAME: {qmname}')
         exit(-1)
-    g_x_inner_pars['iampm'] = iampm
-
+    dpars['iampm'] = iampm
     if iampm != 0:
-        g_x_inner_pars['isqm'] = 1
+        dpars['isqm'] = 1
     else:
-        g_x_inner_pars['isqm'] = 0
+        dpars['isqm'] = 0
 
-    cmname = g_x_inner_pars['cmname']
+    cmname = dpars['cmname']
     if cmname in ['mull']:
-        ichargemode = 2
+        ichmod = 2
     elif cmname in ['cm1','cm1a','cm1p']:
-        ichargemode = 3
+        ichmod = 3
     elif cmname in ['cm3','cm3a','cm3p']:
-        ichargemode = 4
+        ichmod = 4
     elif cmname in ['gpar']:
-        ichargemode = 5
+        ichmod = 5
         iampm = 5
     elif cmname in ['','opls','none']:
-        ichargemode = 0
+        ichmod = 0
     else:
-        ichargemode = -1
-        print('Unavailable QM Choice: CMNAME: - Aborted')
+        ichmod = -1
+        print(f'Fatal: unavailable QM choice: CMNAME: {cmname}')
         exit(-1)
-    g_x_inner_pars['ichargemode'] = ichargemode
+    dpars['ichmod'] = ichmod
+    if dpars['isqm'] == 0: dpars['ichmod'] = 0
 
-
-    qmscale = g_x_inner_pars['qmscale']
-    if qmscale <= 0.:
+    if dpars['qmscale'] <= 0.0:
         qmscale = 1.2
-        if g_x_inner_pars['rc0'] != 0.0:
+        if dpars['rc0'] != 0.0:
             qmscale = 1.0
-    g_x_inner_pars['qmscale'] = qmscale
+        dpars['qmscale'] = qmscale
 
+    dpars['nsatno'] = [0 for i in range(25)]
+    dpars['nfatm'] = [0 for i in range(25)]
+    dpars['nlatm'] = [0 for i in range(25)]
+    dpars['nsatcz'] = [0 for i in range(25)]
+    dpars['nfatm'][0] = 1
 
-    isolec = g_x_inner_pars['isolec']
-    if isolec <= 0:
-        isolec = 1
-    g_x_inner_pars['isolec'] = isolec
+    dpars['nsolut'] = 1
+    if dpars['isolec'] <= 0:
+        dpars['isolec'] = 1
 
-
-    slfmt = g_x_inner_pars['slfmt']
+    slfmt = dpars['slfmt']
     if slfmt in ['zmat']:
-        solute_filetype = 0
+        islfmt = 0
     elif slfmt in ['pdb','pdbp']:
-        #TODO
-        solute_filetype = 1
+        islfmt = 1
     elif slfmt in ['mind']:
-        #TODO
-        solute_filetype = 2
+        islfmt = 2
     elif slfmt in ['in']:
-        solute_filetype = 3
+        islfmt = 3
     elif slfmt in ['zin']:
-        solute_filetype = 4
+        islfmt = 4
     else:
-        solute_filetype = 99
+        islfmt = 99
         print('*** UNRECOGNIZED SOLUTE FORMAT IN THE PAR FILE ***')
         exit()
-    g_x_inner_pars['solute_filetype'] = solute_filetype
+    dpars['islfmt'] = islfmt
 
-
-    solvent_file_format = g_x_inner_pars['solor']
+    solvent_file_format = dpars['solor']
     if solvent_file_format in ['boxes','cap']:
-        solvent_filetype = 0
+        isolor = 0
     elif solvent_file_format in ['in']:
-        solvent_filetype = 1
+        isolor = 1
     elif solvent_file_format in ['','none']:
-        solvent_filetype = 2
+        isolor = 2
     else:
-        solvent_filetype = 99
+        isolor = 99
         print('*** UNRECOGNIZED SOLVENT FORMAT IN THE PAR FILE ***')
         exit()
-    g_x_inner_pars['solvent_filetype'] = solvent_filetype
+    dpars['isolor'] = isolor
 
+    dpars['ivxyz'] = 1 if dpars['vxyz'] == 'vxyz' else 0
+    if dpars['slab'] == 'slab':
+        dpars['islab'] = 1
+        dpars['ivxyz'] = 1
+    else:
+        dpars['islab'] = 0
 
     istart = 99
-    ioptimize = 0
-    if g_x_inner_pars['icalc'] == 1:
-        if solute_filetype == 0:
-            if solvent_filetype == 1:
+    dpars['ioptim'] = 0
+    if dpars['icalc'] == 1:
+        if islfmt == 0:
+            if isolor == 1:
                 istart = 3
-            elif solvent_filetype in [0,2]:
+            elif isolor in [0,2]:
                 istart = 4
-        elif solute_filetype == 1:
-            if solvent_filetype == 0:
+        elif islfmt == 1:
+            if isolor == 0:
                 istart = 5
-            elif solvent_filetype == 1:
+            elif isolor == 1:
                 istart = 9
-        elif solute_filetype == 2:
-            if solvent_filetype == 0:
+        elif islfmt == 2:
+            if isolor == 0:
                 istart = 4
-            elif solvent_filetype == 1:
+            elif isolor == 1:
                 istart = 7
-        elif solute_filetype == 3:
-            if solvent_filetype == 0:
+        elif islfmt == 3:
+            if isolor == 0:
                 istart = 8
-        elif solute_filetype == 4:
-            if solvent_filetype == 1:
+        elif islfmt == 4:
+            if isolor == 1:
                 istart = 7
-    elif g_x_inner_pars['icalc'] == 0:
+    elif dpars['icalc'] == 0:
         istart = 0
-        if solute_filetype == 1:
+        if islfmt == 1:
             istart = 6
-    elif g_x_inner_pars['icalc'] >= 2:
-        solute_filetype = 0
-        solvent_filetype = 2
+    elif dpars['icalc'] >= 2:
+        dpars['islfmt'] = 0
+        dpars['isolor'] = 2
         istart = 4
-        opt = g_x_inner_pars['optim']
+        opt = dpars['optim']
         if opt == 'simpl':
-            ioptimize = 0
+            ioptim = 0
         elif opt == 'powel':
-            ioptimize = 1
+            ioptim = 1
         elif opt == 'hooke':
-            ioptimize = 2
+            ioptim = 2
         elif opt == 'flepo':
-            ioptimize = 3
+            ioptim = 3
         elif opt == 'bfgs':
-            ioptimize = 4
+            ioptim = 4
         elif opt in ['conju','cg']:
-            ioptimize = 5
+            ioptim = 5
         elif opt in ['siman','sa']:
-            ioptimize = 8
+            ioptim = 8
         else:
-            ioptimize = 0
-        g_x_inner_pars['optim'] = ioptimize
-        #TODO simulation annealing
-    g_x_inner_pars['istart'] = istart
+            ioptim = 0
+        dpars['ioptim'] = ioptim
+        if dpars['ftol'] <= 0.0: dpars['ftol'] = 0.001
+        if dpars['nsaevl'] <= 0: dpars['nsaevl'] = 1000000
+        if dpars['nsatr'] <= 0: dpars['nsatr'] = 5
+        if dpars['satemp'] <= 0: dpars['satemp'] = 5.0
+        if dpars['sart'] <= 0 or dpars['sart'] >= 1.0: dpars['sart'] = 0.5
+    dpars['istart'] = istart
 
-    solvent_solvent_cutoff = g_x_inner_pars['rcut']
-    if solvent_solvent_cutoff <= 0.0:
-        solvent_solvent_cutoff = 8.5
-        if solvent1_modenum > 2:
-            solvent_solvent_cutoff = 10.0
-        if solvent1_modenum == 13:      # specific
-            solvent_solvent_cutoff = 8.5
-        g_x_inner_pars['rcut'] = solvent_solvent_cutoff
-
-    solute_solvent_cutoff = g_x_inner_pars['scut']
-    if solute_solvent_cutoff <= 0.0:
-        solute_solvent_cutoff = 8.5
-        if solvent1_modenum > 2:
-            solute_solvent_cutoff = 10.0
-        if solvent1_modenum == 13:      # specific
-            solute_solvent_cutoff = 8.5
-        g_x_inner_pars['scut'] = solute_solvent_cutoff
-
-    fdielec = g_x_inner_pars['dielec']
-    if g_x_inner_pars['noss'] == 0:
-        g_x_inner_pars['scllj'] = 1.0
-        if solvent1_modenum != 99:
-            fdielec = 1.0
-    if fdielec <= 0.0:
-        fdielec = 1.0
-    g_x_inner_pars['dielec'] = fdielec
-
-    if fdielec > 1.0:
-        g_x_inner_pars['dielrf_factor'] = (fdielec-1.0) / ((2.*fdielec+1.)*solvent_solvent_cutoff**3)
-        g_x_inner_pars['irfon'] = 1
+    newzm = dpars['newzm']
+    if newzm == 'full':
+        inewzm = 2
+    elif newzm == 'fullm':
+        inewzm = 3
+    elif newzm:
+        inewzm = 1
     else:
-        g_x_inner_pars['dielrf'] = 1.0
-        g_x_inner_pars['dielrf_factor'] = 0.0
-        g_x_inner_pars['irfon'] = 0
+        inewzm = 0
+    dpars['inewzm'] = inewzm
 
-    nonbonded_cutoff = g_x_inner_pars['cutnb']
-    if nonbonded_cutoff <= 0.0:
-        g_x_inner_pars['cutnb'] = 16
+    if dpars['ncents'] <= 0: dpars['ncents'] = 1
+    dpars['icutas'] = icutas = [[1,0,0,0,0],[1,0,0,0,0]]
+    dpars['ncutas'] = ncutas = [1,1]
+    if dpars['icussl'] == 1:
+        dpars['icutas'] = icutas = dpars['icutat']
+        ncut = len(icutas) - icutas.count(0)
+        if ncut == 0:
+            icutas[dpars['modcus']][0] = dpars['ncents']
+        else:
+            ncutas[dpars['modcus']-1] = ncut        # minus 1 to start at 0
 
-    if g_x_inner_pars['torcut'] <= 0.0:
-        g_x_inner_pars['torcut'] = 1.0
+    if dpars['ncent1'] <= 0:
+        dpars['ncent1'] = 1
+    if dpars['ncent2'] <= 0:
+        dpars['ncent2'] = dpars['ncent1']
 
-    g_x_inner_pars['ivxyz'] = 1 if g_x_inner_pars['vxyz'] == 'vxyz' else 0
-    if g_x_inner_pars['slab'] == 'slab':
-        g_x_inner_pars['islab'] = 1
-        g_x_inner_pars['ivxyz'] = 1
+    if dpars['nrota1'] <= 0:
+        dpars['nrota1'] = 1
+    if dpars['nrota2'] <= 0:
+        dpars['nrota2'] = dpars['nrota1']
+
+    if dpars['icapat'] != 0:
+        if dpars['icapat'] <= 0:
+            dpars['icapat'] = dpars['ncent1']
+        if dpars['caprad'] <= 0.0:
+            dpars['caprad'] = 15.0
+        dpars['capsq'] = dpars['caprad'] ** 2
+        dpars['capsq5'] = (dpars['caprad'] + 5.0) ** 2
+        dpars['nvchg'] = 999999
+        if dpars['icalc'] == 1 and dpars['isolor'] == 0:
+            dpars['nmol'] = 9999
+
+    rcut = dpars['rcut']
+    if rcut <= 0.0:
+        rcut = 8.5
+        if dpars['modsv1'] > 2:
+            rcut = 10.0
+        if dpars['modsv1'] == 13:
+            rcut = 8.5
+        dpars['rcut'] = rcut
+
+    dielrf = dpars['dielrf']
+    if dielrf > 1.0:
+        rcut = dpars['rcut']
+        dpars['rffac'] = (dielrf-1.0) / ((2.0*dielrf + 1.0) * rcut**3)
+        dpars['irfon'] = 1
     else:
-        g_x_inner_pars['islab'] = 0
-    
-    if g_x_inner_pars['nvchg'] <= 0:
-        g_x_inner_pars['nvchg'] = 125 * (g_x_inner_pars['nmol']//20)
-    if g_x_inner_pars['nvchg'] <= 0:
-        g_x_inner_pars['nvchg'] = 999999
-    
-    if g_x_inner_pars['nschg'] <= 0:
-        g_x_inner_pars['nschg'] = 10 * (g_x_inner_pars['nmol']//40)
-    if g_x_inner_pars['nschg'] <= 0:
-        g_x_inner_pars['nschg'] = g_x_inner_pars['nmol'] + 1
+        dpars['dielrf'] = 1.0
+        dpars['irfon'] = 0
+        dpars['rffac'] = 0.0
 
-    if g_x_inner_pars['nconsv']  == 0:
-        g_x_inner_pars['nconsv']  = 999999
+    scut = dpars['scut']
+    if scut <= 0.0:
+        scut = 8.5
+        if dpars['modsv1'] > 2:
+            scut = 10.0
+        if dpars['modsv1'] == 13:
+            scut = 8.5
+        dpars['scut'] = scut
 
-    if g_x_inner_pars['vdel'] <= 0.0:
-        g_x_inner_pars['vdel'] = float(g_x_inner_pars['nmol']//20*10)
+    cutnb = dpars['cutnb']
+    if cutnb <= 0.0:
+        dpars['cutnb'] = 16.0
 
-    if g_x_inner_pars['isolec'] <= 0:
-        g_x_inner_pars['isolec'] = 1
-    
-    if g_x_inner_pars['ncent2'] <= 0:
-        g_x_inner_pars['ncent2'] = g_x_inner_pars['ncent1']
+    if dpars['wkc'] <= 0.0:
+        dpars['wkc'] = 200.0
+    if dpars['wkc'] > 1000.0:
+        dpars['nopref'] = 1
 
-    icutat = g_x_inner_pars['icutat']
-    if g_x_inner_pars['icut'] == 3:
-        g_x_inner_pars['ncutat'] = 2
-        g_x_inner_pars['icutat'][0] = g_x_inner_pars['ncent1']
-        g_x_inner_pars['icutat'][1] = g_x_inner_pars['ncent2']
-    elif g_x_inner_pars['icut'] == 4:
-        g_x_inner_pars['ncutat'] = len(icutat) - icutat.count(0)
+    if dpars['torcut'] <= 0.0:
+        dpars['torcut'] = 1.0
+
+    if dpars['rdel'] <= 0.0:
+        dpars['rdel'] = 0.15
+        if dpars['modsv1'] > 2: dpars['rdel'] = 0.2
+
+    if dpars['adel'] <= 0.0:
+        dpars['adel'] = 15.0
+        if dpars['modsv1'] > 2: dpars['adel'] = 20
+
+    if dpars['scl14c'] <= 0.0:
+        dpars['scl14c'] = 2.0
+    elif dpars['scl14c'] > 99999.0:
+        dpars['scl14c'] = 1.0 * 10**30
+    dpars['scl41c'] = 1.0 / dpars['scl14c']
+
+    if dpars['scl14l'] <= 0.0:
+        dpars['scl14l'] = 2.0
+    elif dpars['scl14l'] > 99999.0:
+        dpars['scl14l'] = 1.0 * 10**30
+    dpars['scl41l'] = 1.0 / dpars['scl14l']
+
+    if dpars['rdlmin'] <= 0.0:
+        dpars['rdlmin'] = 1.35
+
+    if dpars['rdlinc'] <= 0.0:
+        dpars['rdlinc'] = 0.1
+    dpars['rinc'] = 1.0 / dpars['rdlinc']
+
+    if dpars['eprmin'] <= 0.0:
+        dpars['eprmin'] = -15.25
+
+    if dpars['eprinc'] <= 0.0:
+        dpars['eprinc'] = 0.5
+
+    if dpars['edmin'] <= 0.0:
+        dpars['edmin'] = -40.5
+
+    if dpars['edinc'] <= 0.0:
+        dpars['edinc'] = 1.0
+
+    if dpars['essmin'] <= 0.0:
+        dpars['essmin'] = -40.5
+
+    if dpars['essinc'] <= 0.0:
+        dpars['essinc'] = 1.0
+
+    if dpars['ebsmin'] <= 0.0:
+        dpars['ebsmin'] = -202.0
+
+    if dpars['ebsinc'] <= 0.0:
+        dpars['ebsinc'] = 4.0
+
+    if dpars['nsym'] <= 0:
+        dpars['nsym'] = 1
+
+    if dpars['nconf'] <= 0:
+        dpars['nconf'] = 1
+
+    if dpars['fscale'] <= 0.0:
+        dpars['fscale'] = 1.0
+
+    if dpars['maxvar'] <= 0:
+        dpars['maxvar'] = 15
+
+    if dpars['pltfmt'] == 'pdb':
+        iplfmt = 1
+    elif dpars['pltfmt'] == 'pdbb':
+        iplfmt = 2
+    elif dpars['pltfmt'] == 'pdb2':
+        iplfmt = 3
+    elif dpars['pltfmt'] in ['mdlmo', 'mol', 'mdl', 'mdlsd']:
+        iplfmt = 4
     else:
-        g_x_inner_pars['ncutat'] = 0
-    
-    # make sure atom pairs of RDFs are set correctly
-    n = g_x_inner_pars['nrdf']
-    if n == 0:
-        l1 = list(set(g_x_inner_pars['nrdfs1']))
-        assert len(l1) == 1 and l1[0] == 0
-        l2 = list(set(g_x_inner_pars['nrdfs2']))
-        assert len(l2) == 1 and l2[0] == 0
-    else:
-        l1 = g_x_inner_pars['nrdfs1']
-        m = max([l1.count(i) for i in set(l1) if i != 0])   # ignore `zero`s 
-        assert m <= n and 0 not in l1[:n]
-        l2 = g_x_inner_pars['nrdfs2']
-        m = max([l2.count(i) for i in set(l2) if i != 0])
-        assert m <= n and 0 not in l2[:n]
-    g_x_inner_pars['rdfs_solvent_solvent'] = [[l1[i],l2[i]] for i in range(n)]
+        iplfmt = 0
+    dpars['iplfmt'] = iplfmt
 
-    n = g_x_inner_pars['nrdfs']
-    if n == 0:
-        l1 = list(set(g_x_inner_pars['nrdfa1']))
-        assert len(l1) == 1 and l1[0] == 0
-        l2 = list(set(g_x_inner_pars['nrdfa2']))
-        assert len(l2) == 1 and l2[0] == 0
-    else:
-        l1 = g_x_inner_pars['nrdfa1']
-        m = max([l1.count(i) for i in set(l1) if i != 0])
-        assert m <= n and 0 not in l1[:n]
-        l2 = g_x_inner_pars['nrdfa2']
-        m = max([l2.count(i) for i in set(l2) if i != 0])
-        assert m <= n and 0 not in l2[:n]
-    g_x_inner_pars['rdfs_solute_solvent'] = [f'{l1[i]}-{l2[i]}' for i in range(n)]
+    dpars['rcutsq'] = rcutsq = dpars['rcut'] ** 2
+    dpars['scutsq'] = scutsq = dpars['scut'] ** 2
+    dpars['ru2'] = ru2 = rcutsq
+    dpars['su2'] = su2 = scutsq
+    dpars['rl2'] = rl2 = (rcut-0.5) ** 2
+    dpars['sl2'] = sl2 = (scut-0.5) ** 2
+    dpars['rul'] = 1.0 / (ru2-rl2)
+    dpars['sul'] = 1.0 / (su2-sl2)
+    if dpars['nosmth'] == 1 or dpars['irfon'] == 1:
+        dpars['rl2'] = 1.0 * 10**20
+        dpars['sl2'] = 1.0 * 10**20
 
-    if g_x_inner_pars['ebsmin'] <= 0.0:
-        g_x_inner_pars['ebsmin'] = -202.0
+    dtorad = 0.017453292519943295
+    dpars['adel'] *= dtorad
+    dpars['rdl2'] = 2 * dpars['rdel']
+    dpars['adl2'] = 2 * dpars['adel']
+    dpars['adels'] = [0.14 for i in range(25)]
+    dpars['adels'][0] = dpars['adels1'] * dtorad
+    dpars['adels'][1] = dpars['adels2'] * dtorad
+    dpars['rdels'] = [0.08 for i in range(25)]
+    dpars['rdels'][0] = dpars['rdels1']
+    dpars['rdels'][1] = dpars['rdels2']
 
+    dpars['istart'] = istart
+    assert istart == 4
 
     #TODO for future updates
-    assert g_x_inner_pars['igbsa'] == 0
-    assert g_x_inner_pars['iewald'] == 0
-    assert g_x_inner_pars['icussl'] == 0
-    assert g_x_inner_pars['islab'] == 0
-    assert g_x_inner_pars['nofep'] == 0
-    assert g_x_inner_pars['icapat'] == 0
+    assert dpars['igbsa'] == 0
+    assert dpars['iewald'] == 0
+    assert dpars['icussl'] == 0
+    assert dpars['islab'] == 0
+    assert dpars['nofep'] == 0
+    assert dpars['icapat'] == 0
+    assert dpars['noss'] == 0
 
-    return g_x_inner_pars
-
-
-def get_solvents_data(svmod1,svmod2,bond_pars):
-    g_c_esq = 332.06
-    solvent1_pars = SOLVENT_PARS[svmod1.lower()]
-    solvent2_pars = SOLVENT_PARS[svmod2.lower()]
-    s_mod1 = solvent1_pars[1]
-    s_mod2 = solvent2_pars[1]
-
-    spars = {}
-    if s_mod1 == 1 or s_mod2 == 1:
-        spars = SOLVENT_MODE[1]
-    elif s_mod1 == 2 or s_mod2 == 2:
-        spars = SOLVENT_MODE[2]
-
-    g_x_solvents_data = {
-        '1': {
-            'name': solvent1_pars[0],
-            'modenum': solvent1_pars[1],
-            'atom_names': solvent1_pars[2],
-            'atom_indexes': solvent1_pars[3],
-            'natoms': len(solvent1_pars[2])
-        },
-        '2': {
-            'name': solvent2_pars[0],
-            'modenum': solvent2_pars[1],
-            'atom_names': solvent2_pars[2],
-            'atom_indexes': solvent2_pars[3],
-            'natoms': len(solvent2_pars[2])
-        },
-    }
-    g_x_solvents_data.update(spars)
-    g_x_solvents_data['natmx'] = max(len(solvent1_pars[2]),len(solvent2_pars[2]))
-
-    sqrtesq = pow(g_c_esq,0.5)
-    for s in ['1','2']:
-        p = g_x_solvents_data[s]
-        bp = []
-        for i in p['atom_indexes']:
-            for t in bond_pars:
-                if t[0] == i:
-                    bp.append(t)
-                    break
-        p['bond_pars'] = bp
-        p['QW'] = [l[3]*sqrtesq for l in bp]
-        p['AW'] = [pow(4.0*l[5]*(l[4]**12),0.5) for l in bp]
-        p['BW'] = [pow(4.0*l[5]*(l[4]**6), 0.5) for l in bp]
-
-    inters = {}
-    n = len(g_x_solvents_data['1']['QW'])
-    for i in range(n):
-        q = g_x_solvents_data['1']['QW'][i]
-        a = g_x_solvents_data['1']['AW'][i]
-        b = g_x_solvents_data['1']['BW'][i]
-        for j in range(n):
-            qq = g_x_solvents_data['1']['QW'][j] * q
-            aa = g_x_solvents_data['1']['AW'][j] * a
-            bb = g_x_solvents_data['1']['BW'][j] * b
-            key = f'{i}-{j}'
-            inters[key] = [qq,aa,bb]
-    g_x_solvents_data['1-1'] = inters
-
-    return g_x_solvents_data
-
-
-
-
+    return dpars
 
 
