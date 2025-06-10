@@ -1,18 +1,34 @@
-from PyBOSS.utils import read_zmat, zmat2cor, read_ff_file, read_oplsaa_file
-from PyBOSS.constants import SOLVENT_MODE, SOLVENT_PARS
-from PyBOSS.init_pars import init_pars, get_solvents_data
+from .utils import zmat2cor
+from .constants import SOLVENT_MODE, SOLVENT_PARS
+from .init_pars import init_pars
+from .get_pars import read_config_file
+from .init_solutes import InitSolutes
+from .init_solvents import InitSolvents
+from .interactions import Interactions
+from .read_zmat import read_zmat
+from .read_ff_pars import read_ff_file, read_oplsaa_file
+from .qm import qm
 
 import os
 import math
 import collections
 import json
+import copy
+
+SRCPATH    = os.path.dirname(__file__)        # this will be udpated
+OPLSAA_PAR  = os.path.join(SRCPATH,'data','oplsaa.par')
+OPLSAA_SB   = os.path.join(SRCPATH,'data','oplsaa.sb')
+ORG1BOX     = os.path.join(SRCPATH,'data','org1box')
+ORG2BOX     = os.path.join(SRCPATH,'data','org2box')
+WATBOX      = os.path.join(SRCPATH,'data','watbox')
+
 
 def my_print_tld(dic,offset=0):
     """powerful print for `tuple,list,dictionary`"""
     skip = ' '*offset
     if isinstance(dic,(int,float,str)):
         print(f'{skip}{dic}')
-    elif isinstance(dic,(list,tuple)):
+    elif isinstance(dic,(list,tuple,set)):
         for i in dic:
             print(f'{skip}{i}')
     elif isinstance(dic,dict):
@@ -32,75 +48,79 @@ def my_dump_json(dic,file='checkrst.json'):
     f.close()
 
 
-from get_pars import read_config_file
-g_x_inner_pars = read_config_file('configs.txt')
-g_x_inner_pars = init_pars(g_x_inner_pars)
+CWD = os.path.dirname(__file__)
+CONFIG = os.path.join(CWD,'configs.txt')
+ZMAT = os.path.join(CWD,'pmfzmat')
 
 
-parfile = '../myparse-boss-run/bak-files/tmppar'
-bond_pars, dihedral_pars = read_ff_file(parfile,skip=73,msg=False)
-
-oplsaafile = '../myparse-boss-run/bak-files/oplsaa.sb'
-oplsaa_bond_pars, oplsaa_angle_pars = read_oplsaa_file(oplsaafile,msg=False)
+dpars = read_config_file(CONFIG)
+dpars = init_pars(dpars)
 
 
-matfile = '../myparse-boss-run/bak-files/pmfzmat'
-g_x_solute_zmat = read_zmat(matfile)
+solutezmat = read_zmat(ZMAT)
+
+bond_pars, dihedral_pars = read_ff_file(OPLSAA_PAR,skip=0,msg=False)
+oplsaa_bond_pars, oplsaa_angle_pars = read_oplsaa_file(OPLSAA_SB,msg=False)
 
 
-from init_solutes import InitSolutes
-myinitsolute = InitSolutes(
+kws = copy.deepcopy(dpars)
+
+Xsolute = InitSolutes(
     bond_pars=bond_pars, dihedral_pars=dihedral_pars,
     oplsaa_bond_pars=oplsaa_bond_pars, oplsaa_angle_pars=oplsaa_angle_pars,
-    solutezmat=g_x_solute_zmat,
-    **g_x_inner_pars
+    solutezmat=solutezmat,
+    **kws
 )
+Xsolute.run()
 
-myinitsolute.run()
+kws['a'] = []
+kws['b'] = []
+kws['q'] = []
+kws['anew']
+kws['anew1']
+kws['anew2']
+kws['asol']
+kws['asol1']
+kws['asol2']
+kws['ityp']
+kws['ityp1']
+kws['ityp2']
+kws['iztyp']
+kws['nsatm'] = len(Xsolute['reference']['xyz'])
+kws['nstyp'] = None
+
+from .interface import Interface
+Gsolutesdata = g = Xsolute.solutesdata
+Xif = Interface(
+    refer_xyz=g['reference']['xyz'],refer_atnum=g['reference']['atomtypes'],
+    first_xyz=g['frist']['xyz'],first_atnum=g['frist']['atomtypes'],
+    second_xyz=g['second']['xyz'],second_atnum=g['second']['atomtypes'],
+)
+Xif.run()
+charges = [Xif.refer_charges, Xif.first_charges, Xif.second_charges]
+energies = [Xif.refer_energy, Xif.first_energy, Xif.second_energy]
+Xsolute.set_pert_charges(charges,fullpars=False)
+Xsolute.set_pert_energies(energies)
 
 
-charges = [
-    [0.123782,  -0.324020,  -0.122514,  -0.131094,  -0.122398,  -0.090627,  -0.110795,  -0.107795,
-    -0.041283,  -0.098389,  -0.241108,  0.113690,  0.114137,  0.111586,  0.105579,  0.109568,
-     0.110946,  0.103171,  0.110094,  0.112362,  0.090699,  0.091562,  0.092955],
-
-    [0.122793,  -0.322451,  -0.121568,  -0.131891,  -0.122996,  -0.090563,  -0.111474,  -0.108143,
-    -0.040175,  -0.098441,  -0.241206,  0.113707,  0.114313,  0.111413,  0.105496,  0.109418,
-    0.110772,  0.103276,  0.109582,  0.112461,  0.090926,  0.091736,  0.093112],
-
-    [0.124772,  -0.325553,  -0.123412,  -0.130339,  -0.121828,  -0.090694,  -0.110096,  -0.107458,
-    -0.042398,  -0.098372,  -0.240998,  0.113674,  0.113972,  0.111752,  0.105660,  0.109709,
-    0.111120,  0.103070,  0.110615,  0.112263,  0.090474,  0.091390,  0.092802]
-]
-
-energies = [
-    -290649.9454773242343, -290651.4501195290025, -290648.2110411519183
-]
 
 
-myinitsolute.set_pert_charges(charges,fullpars=False)
-myinitsolute.set_pert_energies(energies)
-g_x_solutes_data = myinitsolute.solutesdata
-
-
-waterfile = '../myparse-boss-run/bak-files/watbox'
-
-from init_solvents import InitSolvents
-
-myinitsolvent = InitSolvents(
-    movetype=1, myicut=2, waterboxfile=waterfile,
+Xsolvent = InitSolvents(
+    movetype=1, waterboxfile=WATBOX,
     bond_pars=bond_pars,
-    solutezmat=g_x_solute_zmat,
-    solutesdata=g_x_solutes_data,
-    **g_x_inner_pars
+    solutezmat=solutezmat,
+    solutesdata=Gsolutesdata,
+    **kws
 )
 
-myinitsolvent.run('reference')
-g_x_solvents_data = myinitsolvent.solventsdata
-g_x_inner_pars['irn'] = myinitsolvent.irn
+Xsolvent.run('reference')
+Gsolventsdata = Xsolvent.solventsdata
+dpars['irn'] = Xsolvent.irn
 
 
-nmol = g_x_inner_pars['nmol']
+
+
+nmol = dpars['nmol']
 
 nvchg = 5
 nschg = 3
@@ -111,22 +131,22 @@ vdel2 = 2.0 * vdel
 nsolute = 1
 isolec = 1
 if isolec > nsolute: isolec = 1
-g_x_inner_pars['isolec'] = isolec
+dpars['isolec'] = isolec
 
-icut = g_x_inner_pars['icut']
+icut = dpars['icut']
 if icut == 5:
-    ls = g_x_solutes_data['reference']['atomtypes']
+    ls = Gsolutesdata['reference']['atomtypes']
     ncutat = len(ls) - ls.count(0)
 else:
-    ncutat = g_x_inner_pars['ncutat']
-g_x_inner_pars['ncutat'] = ncutat
+    ncutat = dpars['ncutat']
+dpars['ncutat'] = ncutat
 
 # added keys
-g_x_inner_pars['modsv1'] = 2
-g_x_inner_pars['modsv2'] = 3
-if g_x_inner_pars['vdel'] <= 0.0:
-    if g_x_inner_pars['modsv1'] > 2 and g_x_inner_pars['modsv1'] != 3:
-        g_x_inner_pars['vdel'] = float(g_x_inner_pars['nmol']//10*15)
+dpars['modsv1'] = 2
+dpars['modsv2'] = 3
+if dpars['vdel'] <= 0.0:
+    if dpars['modsv1'] > 2 and dpars['modsv1'] != 3:
+        dpars['vdel'] = float(dpars['nmol']//10*15)
 
 
 refer = [
@@ -211,21 +231,21 @@ second = [
     [-0.862754907,  -1.475480418,   4.409841172     ],
 ]
 
-g_x_solutes_data['reference']['xyz'] = refer
-g_x_solutes_data['first']['xyz'] = first
-g_x_solutes_data['second']['xyz'] = second
+Gsolutesdata['reference']['xyz'] = refer
+Gsolutesdata['first']['xyz'] = first
+Gsolutesdata['second']['xyz'] = second
 
 
 dipole = []
 quadrupole = []
-n = len(g_x_solutes_data['reference']['xyz'])
+n = len(Gsolutesdata['reference']['xyz'])
 for k in ['reference','first','second']:
     qp = [0.0 for t in range(6)]
-    r0 = g_x_solutes_data[k]['xyz'][0]
+    r0 = Gsolutesdata[k]['xyz'][0]
     dxx = dyy = dzz = 0.0
     for i in range(2,n):
-        ri = g_x_solutes_data[k]['xyz'][i]
-        q = g_x_solutes_data[k]['Q'][i] * 0.0548771714
+        ri = Gsolutesdata[k]['xyz'][i]
+        q = Gsolutesdata[k]['Q'][i] * 0.0548771714
         ri0 = [ri[t]-r0[t] for t in range(3)]
         dxx += ri0[0] * q
         dyy += ri0[1] * q
@@ -244,18 +264,18 @@ quadrupole = [[i*4.802813198 for i in j] for j in quadrupole]
 
 
 # need more debug -- hydrogen donor & acceptor
-xyz = g_x_solutes_data['reference']['xyz']
-atomtypes = g_x_solutes_data['reference']['atomtypes']
-a = g_x_solutes_data['reference']['A']
+xyz = Gsolutesdata['reference']['xyz']
+atomtypes = Gsolutesdata['reference']['atomtypes']
+a = Gsolutesdata['reference']['A']
 numdonor = numacceptor = 0
 for rxyz,st,a in zip(xyz,atomtypes,a):
     #                                 heteroatom only if hydrogen
     if st in [7,8,16] or (st == 1 and a <= 0.0):
-        for i,wxyz in enumerate(g_x_solvents_data['xyz']):
-            if i in g_x_solvents_data['nmr']:
-                bp = g_x_solvents_data['2']['bond_pars']
+        for i,wxyz in enumerate(Gsolventsdata['xyz']):
+            if i in Gsolventsdata['nmr']:
+                bp = Gsolventsdata['2']['bond_pars']
             else:
-                bp = g_x_solvents_data['1']['bond_pars']
+                bp = Gsolventsdata['1']['bond_pars']
             sn = len(bp)
             for j in range(len(bp)):
                 sp = bp[j][2]
@@ -273,29 +293,31 @@ for rxyz,st,a in zip(xyz,atomtypes,a):
 
 from interactions import Interactions
 inter = Interactions(
-    solventsdata=g_x_solvents_data, solutezmat=g_x_solute_zmat,
-    solutesdata=g_x_solutes_data,
-    **g_x_inner_pars
+    solventsdata=Gsolventsdata, solutezmat=solutezmat,
+    solutesdata=Gsolutesdata,
+    **dpars
 )
 inter.run_solute_solvent_interactions(movetype=1)
 inter.normlize_wiks()
 
 ecut = inter.ecut()
 
-radsa = g_x_solutes_data['radius_sa']
-asol = g_x_solutes_data['reference']['xyz']
+radsa = Gsolutesdata['radius_sa']
+asol = Gsolutesdata['reference']['xyz']
 
 from boss_calc import PyBOSSCalc
-pbc = PyBOSSCalc(radsa=radsa, asol=asol, rsolv=g_x_inner_pars['rsolv'])
+pbc = PyBOSSCalc(radsa=radsa, asol=asol, rsolv=dpars['rsolv'])
 
-sasa = pbc.calc_amber_sasa(g_x_solutes_data['amber_sasa_atomtypes'])
+sasa = pbc.calc_amber_sasa(Gsolutesdata['amber_sasa_atomtypes'])
 
-g_x_solutes_data['sasa'] = sasa
+Gsolutesdata['sasa'] = sasa
 
 from utils import randu
 
-x,y = randu(g_x_inner_pars['irn'])
-g_x_inner_pars['irn'] = x
+x,y = randu(dpars['irn'])
+dpars['irn'] = x
+
+
 
 
 
@@ -326,7 +348,7 @@ elow = 1e20
 
 if nbuse == 1:
     rncsq = (rcut + 1.5)**2
-    call neibor()
+    #call neibor()
 
 
 # 10
@@ -353,7 +375,7 @@ if nsolut > 2:
 
 
 if ncon % nschg5 == 0:
-    call dipole(dip, qdr)
+    #call dipole(dip, qdr)
 
     ndicnt += 1
     dipsum[0] += dip[0]
@@ -361,7 +383,7 @@ if ncon % nschg5 == 0:
     dipsum[2] += dip[2]
 
     if nmol != 0:
-        call hbond(nacp, ndon)
+        #call hbond(nacp, ndon)
         nhbcnt += 1
         nhbnda += nacp
         nhbndd += ndon
@@ -370,12 +392,12 @@ if ncon % nschg5 == 0:
 if ncon % nfrqsa == 0:
     nsa += 1
     if nosolu == 0:
-        call savol2(0)
+        #call savol2(0)
         avsa += sa
         avvl += vl
         for i in range(4):
             avsatp[i] += satp[i]
-    call ssljco()
+    #call ssljco()
     eslj += esljol
     esco += escool
 
@@ -402,7 +424,7 @@ if not (nvchg != 999999 and ncon % nvchg == 0):
             nmov = int(xmov)
 
         movtry[nmov] += 1
-        call movsvn()
+        #call movsvn()
         # goto 80
         bo80 = True
 
@@ -429,7 +451,7 @@ if bo50 and not bo70 and not bo80:
 
 if bo70 and not bo80:
     # 70
-    call movmol()
+    #call movmol()
 
     if movsol == 1:
         nsotr[isol] += 1
@@ -885,7 +907,8 @@ if movsol != 1:
         if nbuse == 1:
             nbmov[nmov] += 1
             if nbmov[nmov] == nblim:
-                call neighbor()
+                #call neighbor()
+                pass
 
         if nrdf == 0:
             # goto 530
@@ -1176,6 +1199,11 @@ if nflptr != 0:
 print(f"Accepted Flip Moves = {i} Attempted = {nflptr} ({j} %)")
 
 if ntdih != 0:
-    call plthis
+    #call plthis
+    pass
+
+
+
+
 
 
