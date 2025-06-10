@@ -1,0 +1,223 @@
+SUBROUTINE YUGARG(NUMBER,STRING,LENGTH)
+    tmp = STRING.split()[ NUMBER ]
+    LENGTH = len( tmp.rstrip() )
+
+
+
+001     100000    0.0   0.0   0.0
+        MXCON     RC0   RC1   RC2
+
+
+
+
+CALL ARGENV(ICALC,NEWRUN,IPRNT,MXCON,
+    done
+
+
+
+
+CALL GETUNITS(OUTPUT,INFILE,UPFILE,SAVEFILE,AVEFILE,
+    done
+
+
+
+
+CALL INIT(ICALC,NEWRUN,IPRNT,MXCON,RC0,RC1,RC2)
+
+
+    CALL SLVMOD (SVMOD1,MODSV1,NATOM1,IGBSA)
+
+    => init_pars
+
+    ISTART = 4
+    1313:   CALL ZSTART(1)
+
+        8309:   CALL READZM
+        --> read_zmat
+            data = (atom_type,initial,final,b,bv,a,av,d,dv,resid,resname)
+
+
+        8667: CALL MAKMOL (CORF,COR)
+
+        8670:   CALL PARAM
+
+            4680:   CALL COVNEB
+            --> init_solutes::calc_neighbors
+
+            4722:   CALL POLPAR(AMTYPI,AMTYPF,AMTYPS)
+            --> NotImplement
+
+            4769:   goto 128
+
+
+            4881:   CALL DIHGET (I1,I2,I3,I4,AMTYPF(I1),AMTYPF(I2),AMTYPF(I3)
+            4951:   CALL BNDGET (X1,X2,IATNOI(IAT1),IATNOI(IAT2),RI,FCI,IMISI)
+            5034:   CALL ANGGET (X1,X2,X3,RI,FCI,IMISI)
+            --> init_solutes.py
+
+
+        8675:   CALL MAKMOL (COR,ZPAR)
+        8751:   CALL MAKMOL (COR,ZPAR1)
+
+        8761:   CALL QTRF (ASOL,COR,ASOL1,NZAT,0)
+
+        8802:   CALL MAKMOL (COR,ZPAR2)
+
+        8811:   CALL QTRF (ASOL,COR,ASOL2,NZAT,0)
+
+
+        --> init_solutes::calc_pert_xyzs
+        --> QTRF:   init_solutes::calc_maximum_overlap
+
+        8917:   IF (IZLONG.EQ.1) CALL LONGZ
+        --> init_solutes::calc_onto_z_axis
+
+        9057:   goto 560
+
+        9190:   IF (ICHMOD.NE.0) CALL QMINIT(0)
+            --> init_solutes::set_pert_charges
+            --> init_solutes::set_pert_energies
+
+        9209:   SWE(1) = WXPOT(1)
+
+        9363:   IF (NSVAT(2).NE.0) CALL REPLAS
+            9511:   CALL RANINT (NMR,NMOL2,NMOL)
+
+    goto 230
+
+    1682: IF (MODSV1.LE.2) CALL WATFIX
+
+    1687: IF (ISQM.EQ.1) CALL QMINIT(1)
+
+    1692: CALL DIPOLE (DIP,QDR)
+
+    1711: CALL MOLWT(XMOLWT,TOTMW,0)
+
+    1716: CALL HBOND (NACP,NDON)
+
+    1743: CALL NBPAIR(.FALSE.)
+        # do nothing for ISQM=1
+    
+    1748: CALL ENMTX
+        
+        3149: E = WWPOT(J)
+        # water-water potential
+
+        3151: E = SSPOT(J)
+
+
+        3239: E = WXPOT(I)
+            MOVTYP = 1
+            NM          : solvent index
+            ANM(I,J)    : solvent xyz for NM
+            ANEW(I,J)   : solute xyz
+
+        3237: E = SXPOT(I)
+            MOVTYP = 1
+            NM          : solvent index
+            ANM(I,J)    : solvent xyz for NM
+            ANEW(I,J)   : solute xyz
+        
+        3311: CALL EINTRA (X,0)
+
+            17936: CALL UPADD
+                # do nothing for additionals
+            
+            17945: CALL QMEVAL(EINTOT)
+
+            return
+
+        3336: CALL XXPOT
+            # do nothing for current setting
+    
+        3345: CALL POLPOT
+            # do nothing for current setting
+
+        3352: XCUT = ECUT()
+            # cutoff correction
+        
+    1771: CALL OUT
+        2607: ECT = ECUT()
+    
+    1776: CALL SAVOL2(1)
+        # surface area & volume
+        32130: CALL CALC(NSATM,NSATM,X,Y,Z,RADSA,RSOLV,S,V,ITYPE,IPRINT)
+        32151: CALL USROUT(2,NSATM,S,V,RADSA,ISATYP,IPRINT)
+            --> boss_calc.py:: PyBOSSCalc
+    
+    1826: X = RANU()
+
+
+
+
+SUBROUTINE MONTE
+
+    12907: CALL NEIBOR
+        # solvent neighbor list
+    
+    13037: XMOV = XMOL*RANU()+1.D+00
+
+
+    MOVTYP = 0
+    13054: CALL MOVSVN
+        # move solvent
+        15645: CALL ROTATE (ACHG)
+        # loop is skipped
+
+        MOVTYP = 2
+        15704: ESOL = WXPOT(0)
+        MOVTYP = 0
+    goto 80
+
+
+    13008: IF (MOD(NCON,NFRQSA).EQ.0)
+        13021: CALL SSLJCO
+            4144: E = WWPOT(J)
+            4146: E = SSPOT(J)
+
+            4153: ESLJOL = ESLJOL + ECUT()
+
+    MOVTYP = 1
+    MOVSOL = 1
+    13101: CALL MOVMOL
+        # translation
+        # rotation
+        14681: IF ((M-N).NE.0) CALL ROTATE (ACHG)
+
+        # dihedral
+        # angle
+        # bond
+        14941: CALL MAKML2              # make solute
+
+        14965: CALL EINTRA (X,2)        # energies
+
+        14995: CALL XXPOT
+    
+        14998: CALL POLPOT
+    
+
+    13062: MOVVOL = 1
+    goto 70
+    # call movmol, scale coordinates
+
+
+
+
+
+
+
+
+
+
+FUNCTION WXPOT(NM):
+    MOVTYP != 2
+        NM          : index of solvent molecule
+        ANEW(I,J)   : solute xyz
+
+
+SUBROUTINE RANINT(NMR, NRAN, NVAR):
+    nmr = random.sample(range(NVAR), k=NRAN)        # unique randoms
+    return sorted(nmr)
+
+
+

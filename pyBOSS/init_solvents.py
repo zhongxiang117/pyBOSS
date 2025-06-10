@@ -1,8 +1,72 @@
 from PyBOSS.utils import randint, genatom
-from PyBOSS.init_pars import get_solvents_data
+from .constants import SOLVENT_MODE, SOLVENT_PARS
+from .inter import wxpot
 
 import os
 import math
+
+
+def get_solvents_data(svmod1,svmod2,bond_pars):
+    g_c_esq = 332.06
+    solvent1_pars = SOLVENT_PARS[svmod1.lower()]
+    solvent2_pars = SOLVENT_PARS[svmod2.lower()]
+    s_mod1 = solvent1_pars[1]
+    s_mod2 = solvent2_pars[1]
+
+    spars = {}
+    if s_mod1 == 1 or s_mod2 == 1:
+        spars = SOLVENT_MODE[1]
+    elif s_mod1 == 2 or s_mod2 == 2:
+        spars = SOLVENT_MODE[2]
+
+    solventpars = {
+        '1': {
+            'name': solvent1_pars[0],
+            'modenum': solvent1_pars[1],
+            'atom_names': solvent1_pars[2],
+            'atom_indexes': solvent1_pars[3],
+            'natoms': len(solvent1_pars[2])
+        },
+        '2': {
+            'name': solvent2_pars[0],
+            'modenum': solvent2_pars[1],
+            'atom_names': solvent2_pars[2],
+            'atom_indexes': solvent2_pars[3],
+            'natoms': len(solvent2_pars[2])
+        },
+    }
+    solventpars.update(spars)
+    solventpars['natmx'] = max(len(solvent1_pars[2]),len(solvent2_pars[2]))
+
+    sqrtesq = pow(g_c_esq,0.5)
+    for s in ['1','2']:
+        p = solventpars[s]
+        bp = []
+        for i in p['atom_indexes']:
+            for t in bond_pars:
+                if t[0] == i:
+                    bp.append(t)
+                    break
+        p['bond_pars'] = bp
+        p['QW'] = [l[3]*sqrtesq for l in bp]
+        p['AW'] = [pow(4.0*l[5]*(l[4]**12),0.5) for l in bp]
+        p['BW'] = [pow(4.0*l[5]*(l[4]**6), 0.5) for l in bp]
+
+    inters = {}
+    n = len(solventpars['1']['QW'])
+    for i in range(n):
+        q = solventpars['1']['QW'][i]
+        a = solventpars['1']['AW'][i]
+        b = solventpars['1']['BW'][i]
+        for j in range(n):
+            qq = solventpars['1']['QW'][j] * q
+            aa = solventpars['1']['AW'][j] * a
+            bb = solventpars['1']['BW'][j] * b
+            key = f'{i}-{j}'
+            inters[key] = [qq,aa,bb]
+    solventpars['1-1'] = inters
+
+    return solventpars
 
 
 def read_waterboxes_tip4p(filename):
@@ -26,7 +90,7 @@ def read_waterboxes_tip4p(filename):
                 bz = float(line[28:40])
             except (ValueError,TypeError):      # TypeError when list empty
                 print(f'Fatal: TIP4P waterbox: wrong input: {line}')
-                return {}
+                return waterboxes
             data = []
             for l in range(nmol*4*3//6):
                 line = f.readline()
@@ -144,29 +208,33 @@ def wxpot_init(
 class InitSolvents:
     def __init__(
         self, svmod1=None, svmod2=None, bond_pars=None,
-        waterboxfile=None, ibox=None, myicut=None, mymovetype=None,
-        solutezmat=None, solutesdata=None,
-        irn=None, nmol=None, nmol2=None, nrdfs=None, scut=None,
-        *args,**kws
+        waterboxfile=None, ibox=None, irn=None, nmol=None, nmol2=None,
+        *args, **kws
     ):
         self.nice = True
         self.info = ''
+
         waterboxes = read_waterboxes_tip4p(waterboxfile)
-        if not waterboxes:
-            self.nice = False
-            return
+
         self.ibox = ibox if ibox else 216
         self.waterbox = waterboxes[self.ibox]
+        self.kws['ac'] = self.waterbox['xyz']
+        self.kws['edge'] = e = self.waterbox['edge']
+        self.kws['edg2'] = e / 2.0
+
         self.irn = irn if irn else 786123
         self.nmol = nmol
         self.nmol2 = nmol2
-
         self.solventsdata = get_solvents_data(svmod1, svmod2, bond_pars)
-        self._kws = {
-            'movetype':mymovetype, 'icut':myicut, 'modsv':None, 'nrdfs':nrdfs,
-            'waterbox':self.waterbox, 'solventsdata':self.solventsdata,
-            'solutezmat':solutezmat, 'solutesdata':solutesdata, 'scut':scut,
-        }
+
+        self.kws = kws
+        self.kws['aw'] = []
+        self.kws['bw'] = []
+        self.kws['qw'] = []
+        for k in ['1','2']:
+            self.kws['aw'].append(self.solventsdata[k]['aw'])
+            self.kws['bw'].append(self.solventsdata[k]['bw'])
+            self.kws['qw'].append(self.solventsdata[k]['qw'])
 
     def run(self,key=None):
         self.buildup()
@@ -181,8 +249,14 @@ class InitSolvents:
         if key != 'reference': assert False
         if key:
             self.energies = []
+
+            self.kws['movtyp'] = 1
+            self.kws['ncutat'] = None
+            self.kws['nmov'] = None
+
             for nm in range(self.ibox):
-                energy = wxpot_init(nm, 'reference', **self._kws)
+                self.kws['nm'] = nm
+                energy = wxpot(**self.kws)
                 self.energies.append(energy)
         else:
             assert False
