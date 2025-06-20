@@ -73,27 +73,12 @@ Xsolute = InitSolutes(
 )
 Xsolute.run()
 
-kws['a'] = []
-kws['b'] = []
-kws['q'] = []
-kws['anew']
-kws['anew1']
-kws['anew2']
-kws['asol']
-kws['asol1']
-kws['asol2']
-kws['ityp']
-kws['ityp1']
-kws['ityp2']
-kws['iztyp']
-kws['nsatm'] = len(Xsolute['reference']['xyz'])
-kws['nstyp'] = None
 
 from .interface import Interface
 Gsolutesdata = g = Xsolute.solutesdata
 Xif = Interface(
     refer_xyz=g['reference']['xyz'],refer_atnum=g['reference']['atomtypes'],
-    first_xyz=g['frist']['xyz'],first_atnum=g['frist']['atomtypes'],
+    first_xyz=g['first']['xyz'],first_atnum=g['first']['atomtypes'],
     second_xyz=g['second']['xyz'],second_atnum=g['second']['atomtypes'],
 )
 Xif.run()
@@ -103,6 +88,24 @@ Xsolute.set_pert_charges(charges,fullpars=False)
 Xsolute.set_pert_energies(energies)
 
 
+
+
+#!!kws
+kws['iztyp'] = [g[1] for g in Xsolute.solutezmat['data']]
+kws['nsatm'] = Xsolute.total_number_atoms
+kws['ityp'] = [i for i in range(kws['nsatm'])]      # one-on-one correspond with `a`, `b`, `q`
+kws['ityp1'] = [i for i in range(kws['nsatm'])]     # 
+kws['ityp2'] = [i for i in range(kws['nsatm'])]     # 
+kws['a'] = [Xsolute.solutesdata['reference']['A'], Xsolute.solutesdata['first']['A'], Xsolute.solutesdata['second']['A']] 
+kws['b'] = [Xsolute.solutesdata['reference']['B'], Xsolute.solutesdata['first']['B'], Xsolute.solutesdata['second']['B']] 
+kws['q'] = [Xsolute.solutesdata['reference']['Q'], Xsolute.solutesdata['first']['Q'], Xsolute.solutesdata['second']['Q']] 
+kws['anew'] = Xsolute.solutesdata['reference']['xyz']
+kws['anew1'] = Xsolute.solutesdata['first']['xyz']
+kws['anew2'] = Xsolute.solutesdata['second']['xyz']
+kws['nstyp'] = [0 for i in range(kws['nmol'])]      # index of solvent
+kws['isolute'] = p = []
+for c,g in enumerate(Xsolute.solutesdata['atoms_number_offset']):
+    p.extend([c for i in range(*g)])
 
 
 Xsolvent = InitSolvents(
