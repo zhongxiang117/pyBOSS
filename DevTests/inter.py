@@ -1,3 +1,16 @@
+"""
+notes:
+
+    BOSS: AW, BW, QW: format: [solvent_atoms, solvent_type]
+    This:   [solvent_type, solvent_atoms]
+
+    BOSS: ityp, ityp1, ityp2,   format: [sol1-aidx1, sol2-aidx1, sol3-aidx1, sol1-aidx2, sol2-aidx2, sol3-aidx2, ...]
+      ->  a, b, q:              format: [sol1      , sol2      , sol3,      ...]
+    This: a, b, q:  [[sol1], [sol2], [sol3]]
+
+"""
+
+
 def hbond(nsatm, iztyp, asol, iatno, nmol, nsvat, nstyp, isatno, ac, aw, a, ityp):
     rhb2 = 6.25
     naccp = 0
@@ -11,7 +24,8 @@ def hbond(nsatm, iztyp, asol, iatno, nmol, nsvat, nstyp, isatno, ac, aw, a, ityp
         z = asol[i][2]
         bo = False
         if j == 1:
-            if a[ityp[i]] == 0:
+            #if a[ityp[i]] == 0:
+            if a[0][i] == 0:
                 bo = True
         if j in [7, 8]:
             bo = True
@@ -27,7 +41,7 @@ def hbond(nsatm, iztyp, asol, iatno, nmol, nsvat, nstyp, isatno, ac, aw, a, ityp
                         if r <= rhb2:
                             ndon += 1
                 elif m == 1:
-                    if aw[k][ltyp] != 0:
+                    if aw[ltyp][k] != 0:
                         continue
                     r = (x - ac[l][k][0])**2 + (y - ac[l][k][1])**2 + (z - ac[l][k][2])**2
                     if r <= rhb2:
@@ -136,10 +150,10 @@ def sspot(
             x = anew[i][0]
             y = anew[i][1]
             z = anew[i][2]
-            qi = qw[i][n1]
-            ai = aw[i][n1]
+            qi = qw[n1][i]
+            ai = aw[n1][i]
             iflag = 1 if ai == 0.0 else 0
-            bi = bw[i][n1]
+            bi = bw[n1][i]
 
             for j in range(nat2):
                 if isvaty[j][n2] <= 0:
@@ -155,13 +169,13 @@ def sspot(
                 rr = (xx - xix) ** 2 + (yy - xiy) ** 2 + (zz - xiz) ** 2
                 if iflag != 1:
                     r6 = 1.0 / (rr ** 3)
-                    aaij = ai * aw[j][n2]
-                    bbij = bi * bw[j][n2]
+                    aaij = ai * aw[n2][j]
+                    bbij = bi * bw[n2][j]
                     xlj = (aaij*r6 - bbij) * r6
                     sspot += xlj
                     sslj += xlj
                 
-                qqij = qi * qw[j][n2]
+                qqij = qi * qw[n2][j]
                 if qqij != 0.0:
                     if iewald == 1:
                         raise NotImplementedError('Ewald not supported')
@@ -283,7 +297,7 @@ def wwpot(
     return val
 
 
-def ecut(natmx, nocut, noss, rcut, nmol, nsvat, modsv1, nmol2, modsv2, aw, bw, vnew, TWOPI):
+def ecut(natmx, nocut, noss, rcut, nmol, nsvat, modsv1, nmol2, modsv2, aw, bw, vnew, twopi):
     val = 0.0
 
     if natmx == 0 or nocut == 1 or noss == 1:
@@ -306,15 +320,15 @@ def ecut(natmx, nocut, noss, rcut, nmol, nsvat, modsv1, nmol2, modsv2, aw, bw, v
             xm = 0.0
 
     for i in range(natmx):
-        ai = aw[i][0]
-        bi = bw[i][0]
-        aj = aw[i][1]
-        bj = bw[i][1]
+        ai = aw[0][i]
+        bi = bw[0][i]
+        aj = aw[1][i]
+        bj = bw[1][i]
 
         for j in range(natmx):
-            val += (TWOPI * xn * xn / (3.0 * vnew)) * (ai * aw[j][0] * rc9 / 3.0 - bi * bw[j][0] * rc3)
-            val += (TWOPI * xm * xm / (3.0 * vnew)) * (aj * aw[j][1] * rc9 / 3.0 - bj * bw[j][1] * rc3)
-            val += (TWOPI * xn * xm / (3.0 * vnew)) * (ai * aw[j][1] * rc9 / 3.0 - bi * bw[j][1] * rc3) * 2.0
+            val += (twopi * xn * xn / (3.0 * vnew)) * (ai * aw[0][j] * rc9 / 3.0 - bi * bw[0][j] * rc3)
+            val += (twopi * xm * xm / (3.0 * vnew)) * (aj * aw[1][j] * rc9 / 3.0 - bj * bw[1][j] * rc3)
+            val += (twopi * xn * xm / (3.0 * vnew)) * (ai * aw[1][j] * rc9 / 3.0 - bi * bw[1][j] * rc3) * 2.0
 
     return val
 
@@ -436,16 +450,17 @@ def sxpot(
             for l in range(1, llim + 1):
                 xix = xiy = xiz = 0.0
                 if l == 1:
-                    ii = ityp[i]
+                    #ii = ityp[i]
                     xx, yy, zz = anew[i][0], anew[i][1], anew[i][2]
                 elif l == 2:
-                    ii = ityp1[i]
+                    #ii = ityp1[i]
                     xx, yy, zz = anew1[i][0], anew1[i][1], anew1[i][2]
                 elif l == 3:
-                    ii = ityp2[i]
+                    #ii = ityp2[i]
                     xx, yy, zz = anew2[i][0], anew2[i][1], anew2[i][2]
 
-                aii, bii, qii = a[ii], b[ii], q[ii]
+                #aii, bii, qii = a[ii], b[ii], q[ii]
+                aii, bii, qii = a[l-1][i], b[l-1][i], q[l-1][i]
 
                 for j in range(natoms):
                     x = abs(xx - anm[0][j])
@@ -463,9 +478,9 @@ def sxpot(
                     rr = (x - xix)**2 + (y - xiy)**2 + (z - xiz)**2
                     r1 = pow(rr,0.5)
                     r6 = 1.0 / (rr * rr * rr)
-                    el = scal * r6 * (aii * aw[j][n1] * r6 - bii * bw[j][n1])
+                    el = scal * r6 * (aii * aw[n1][j] * r6 - bii * bw[n1][j])
                     elj[l-1] += el
-                    ec = scal * qii * qw[j][n1]
+                    ec = scal * qii * qw[n1][j]
 
                     if irfon == 0:
                         if iewald == 1:
@@ -511,9 +526,9 @@ def sxpot(
                     yy = asol2[i][1]
                     zz = asol2[i][2]
 
-                aii = a[ii]
-                bii = b[ii]
-                qii = q[ii]
+                #aii, bii, qii = a[ii], b[ii], q[ii]
+                aii, bii, qii = a[l-1][i], b[l-1][i], q[l-1][i]
+
 
                 for j in range(natoms):
                     x = abs(xx - anew[j][0])
@@ -532,9 +547,9 @@ def sxpot(
                     r1 = pow(rr,0.5)
                     r6 = 1.0 / (rr * rr * rr)
 
-                    el = scal * r6 * (aii * aw[j][n1] * r6 - bii * bw[j][n1])
+                    el = scal * r6 * (aii * aw[n1][j] * r6 - bii * bw[n1][j])
                     elj[l] += el
-                    ec = scal * qii * qw[j][n1]
+                    ec = scal * qii * qw[n1][j]
 
                     if irfon == 0:
                         if iewald == 1:
@@ -595,14 +610,15 @@ def sxpot(
 
 
 def wxpot(
-    nm, movtyp, nstyp, nsvat, ac, nmov, modsv1, modsv2, nsatm, icut, anew, ncent1, ncent2, asol, islab, edg2,
-    ncutat, icutat, iztyp, nrdfs, scutsq, nsatno, sl2, sul, su2, nofep, ityp, ityp1, ityp2, anew1, anew2,
-    a, b, q, aw, bw, isolec, qw, irfon, iewald, rffac, nrdfa1, nrdfa2, asol1, asol2, edge, nsolut, capfk, icapat,
+    movtyp, nstyp, iztyp, ac, nmov, nsatm, edg2, ncutat, ityp, ityp1, ityp2,
+    anew, anew1, anew2, a, b, q, aw, bw, qw, asol, asol1, asol2, edge,
+    nm, nsvat, modsv1, modsv2, icut, icutat, ncent1, ncent2, islab, isolec, irfon, iewald,
+    nrdfs,  nrdfa1, nrdfa2, scutsq, nsatno, sl2, sul, su2, nofep, rffac, nsolut, capfk, icapat, **kws
 ):
     if movtyp != 2:
         n1 = nstyp[nm]
         natoms = nsvat[n1]
-        anm = [[0.0,0.0,0.0] for i in range(natoms)]
+        anm = [[0.0 for i in range(natoms)] for j in range(3)]
         for i in range(3):
             for j in range(natoms):
                 anm[i][j] = ac[nm][j][i]
@@ -611,7 +627,7 @@ def wxpot(
         natoms = nsvat[n1]
 
     modsv = modsv1
-    if n1 == 2:
+    if n1 == 1:     # check whether is second solvent
         modsv = modsv2
 
     iyes = [1 for i in range(nsatm)]
@@ -631,8 +647,8 @@ def wxpot(
                     x -= edge[i]
             wik += x**2
     else:
-        rmin = [1e20 for i in range(nsolut)]
-        wik = 1e20
+        rmin = [100000000 for i in range(nsolut)]
+        wik = 100000000
         for i in range(nsatm):
             if icut >= 3:
                 bo = True
@@ -657,7 +673,9 @@ def wxpot(
                         y -= edge[j]
                 x += y**2
 
-            j = isolut(i)
+            #j = isolut(i)
+            j = kws['isolute'][i]
+
             rmin[j] = min(rmin[j], x)
             wik = min(wik, x)
 
@@ -704,21 +722,23 @@ def wxpot(
             if iztyp[i] == -1 or iyes[i] == 0:
                 continue
 
-            m = isolut(i)
+            #m = isolut(i)
+            m = kws['isolute'][i]
 
             for l in range(llim):
                 xix = xiy = xiz = 0.0
                 if l == 0:
-                    ii = ityp[i]
+                    #ii = ityp[i]
                     xx, yy, zz = anew[i][0], anew[i][1], anew[i][2]
                 elif l == 1:
-                    ii = ityp1[i]
+                    #ii = ityp1[i]
                     xx, yy, zz = anew1[i][0], anew1[i][1], anew1[i][2]
                 else:
-                    ii = ityp2[i]
+                    #ii = ityp2[i]
                     xx, yy, zz = anew2[i][0], anew2[i][1], anew2[i][2]
 
-                aii, bii, qii = a[ii], b[ii], q[ii]
+                #aii, bii, qii = a[ii], b[ii], q[ii]
+                aii, bii, qii = a[l][i], b[l][i], q[l][i]
 
                 for j in range(natoms):
                     x = abs(xx - anm[0][j])
@@ -736,7 +756,7 @@ def wxpot(
                         rr = (x - xix)**2 + (y - xiy)**2 + (z - xiz)**2
                         r1 = pow(rr,0.5)
                         r6 = 1.0 / (rr**3)
-                        xlj = scal * r6 * (aii * aw[0, n1] * r6 - bii * bw[0, n1])
+                        xlj = scal * r6 * (aii * aw[n1][0] * r6 - bii * bw[n1][0])
                         elj[l] += xlj
                         if l == 0 and m == isolec:
                             elsx += xlj
@@ -748,7 +768,7 @@ def wxpot(
                         r1 = pow(rr,0.5)
 
                     if bo:
-                        coul = qii * qw[j, n1] * scal
+                        coul = qii * qw[n1][j] * scal
                         if irfon == 0:
                             if iewald == 1:
                                 raise NotImplementedError('`iewald==1`')
@@ -774,7 +794,8 @@ def wxpot(
             if iztyp[i] == -1 or iyes[i] == 0:
                 continue
 
-            m = isolut(i)
+            #m = isolut(i)
+            m = kws['isolute'][i]
 
             for l in range(1, llim+1):
                 xix = 0.0
@@ -782,24 +803,23 @@ def wxpot(
                 xiz = 0.0
 
                 if l == 1:
-                    ii = ityp[i]
+                    #ii = ityp[i]
                     xx = asol[i][0]
                     yy = asol[i][1]
                     zz = asol[i][2]
                 elif l == 2:
-                    ii = ityp1[i]
+                    #ii = ityp1[i]
                     xx = asol1[i][0]
                     yy = asol1[i][1]
                     zz = asol1[i][2]
                 elif l == 3:
-                    ii = ityp2[i]
+                    #ii = ityp2[i]
                     xx = asol2[i][0]
                     yy = asol2[i][1]
                     zz = asol2[i][2]
 
-                aii = a[ii]
-                bii = b[ii]
-                qii = q[ii]
+                #aii, bii, qii = a[ii], b[ii], q[ii]
+                aii, bii, qii = a[l-1][i], b[l-1][i], q[l-1][i]
 
                 for j in range(natoms):
                     x = abs(xx - anew[j][0])
@@ -818,7 +838,7 @@ def wxpot(
                         rr = (x - xix)**2 + (y - xiy)**2 + (z - xiz)**2
                         r1 = rr**0.5
                         r6 = 1.0 / (rr**3)
-                        xlj = scal * r6 * (aii * aw[0][n1] * r6 - bii * bw[0][n1])
+                        xlj = scal * r6 * (aii * aw[n1][0] * r6 - bii * bw[n1][0])
                         elj[l-1] += xlj
 
                         if l == 1 and m == isolec:
@@ -832,7 +852,7 @@ def wxpot(
                         r1 = rr**0.5
 
                     if bo:
-                        coul = qii * qw[j][n1] * scal
+                        coul = qii * qw[n1][j] * scal
 
                         if irfon == 0:
                             if iewald == 1:
